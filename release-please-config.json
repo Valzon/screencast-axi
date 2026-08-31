@@ -6,7 +6,11 @@
       "package-name": "screencast-axi",
       "changelog-path": "CHANGELOG.md",
       "include-component-in-tag": false,
-      "extra-files": ["src/version.ts"]
+      "extra-files": [
+        "src/version.ts"
+      ],
+      "bump-minor-pre-major": true,
+      "bump-patch-for-minor-pre-major": true
     }
   }
 }
