@@ -1,0 +1,6 @@
+# esbuild reaches us through `tsx` and `vitest` and needs its postinstall to
+# place a platform binary. pnpm 11 blocks dependency build scripts by default,
+# so it is allowed explicitly here (the key is `allowBuilds`, not the
+# `onlyBuiltDependencies` of pnpm 10).
+allowBuilds:
+  esbuild: true

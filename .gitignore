@@ -1,0 +1,11 @@
+node_modules/
+dist/
+
+# Recorder working directories
+.screencast/
+screencasts/
+tmp/
+
+# Editors / OS
+.DS_Store
+*.log

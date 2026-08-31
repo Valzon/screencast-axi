@@ -1,0 +1,91 @@
+{
+  "name": "screencast-axi",
+  "version": "0.0.0",
+  "packageManager": "pnpm@11.24.0",
+  "description": "AXI-compliant screencast recorder - script a web workflow, record it with a synthetic cursor and captions, encode to mp4/webm/poster. Requires ffmpeg.",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Valzon/screencast-axi.git"
+  },
+  "homepage": "https://github.com/Valzon/screencast-axi#readme",
+  "bugs": {
+    "url": "https://github.com/Valzon/screencast-axi/issues"
+  },
+  "keywords": [
+    "screencast",
+    "video",
+    "playwright",
+    "demo",
+    "gif",
+    "cli",
+    "agent",
+    "axi",
+    "toon"
+  ],
+  "bin": {
+    "screencast-axi": "dist/bin/screencast-axi.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./config": {
+      "types": "./dist/src/config.d.ts",
+      "import": "./dist/src/config.js"
+    },
+    "./manifest": {
+      "types": "./dist/src/manifest.d.ts",
+      "import": "./dist/src/manifest.js"
+    }
+  },
+  "files": [
+    "dist",
+    "skills/screencast-axi",
+    "LICENSE",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc && chmod +x dist/bin/screencast-axi.js",
+    "build:skill": "tsx scripts/build-skill.ts",
+    "dev": "tsx bin/screencast-axi.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.check.json",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "prepublishOnly": "pnpm run build"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@toon-format/toon": "^2.1.0",
+    "axi-sdk-js": "^0.1.11"
+  },
+  "peerDependencies": {
+    "playwright": ">=1.44.0",
+    "tsx": "^4"
+  },
+  "peerDependenciesMeta": {
+    "playwright": {
+      "optional": true
+    },
+    "tsx": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.0",
+    "playwright": "^1.62.1",
+    "prettier": "^3.9.6",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.11"
+  }
+}

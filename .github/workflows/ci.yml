@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Format
+        run: pnpm format:check
+
+      - name: Skill is in sync with its generator
+        run: pnpm build:skill --check
+
+      - name: CLI answers from the built output
+        run: |
+          test "$(node dist/bin/screencast-axi.js --version)" = "$(node -p "require('./package.json').version")"
+          node dist/bin/screencast-axi.js | grep -q "0 scenarios"
