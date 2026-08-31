@@ -48,3 +48,19 @@ export {
   type ScreencastConfig,
 } from "./config.js";
 export { clipFilesFor, readManifest, type ClipFiles, type ManifestEntry } from "./manifest.js";
+export {
+  basicAuth,
+  noAuth,
+  profileAuth,
+  storageStateAuth,
+  type BasicAuthOptions,
+  type ProfileAuthOptions,
+  type StorageStateOptions,
+} from "./auth/strategies.js";
+export type {
+  AuthContext,
+  AuthIdentity,
+  AuthPreflightContext,
+  AuthStrategy,
+  ContextPatch,
+} from "./auth/types.js";

@@ -5,6 +5,8 @@ import { pathToFileURL } from "node:url";
 import { DEFAULT_ENCODE_SETTINGS, type EncodeSettings } from "./encode.js";
 import { DEFAULT_OVERLAY_THEME, type DeepPartial, type OverlayTheme } from "./overlay.js";
 import { isScenario, type DefinedScenario, type Viewport } from "./types.js";
+import { noAuth } from "./auth/strategies.js";
+import type { AuthConfig, AuthStrategy } from "./auth/types.js";
 
 /**
  * Configuration, and finding the scenarios.
@@ -44,6 +46,8 @@ export interface ScreencastConfig {
   readonly deliverables?: Partial<EncodeSettings>;
   readonly browser?: Partial<BrowserConfig>;
   readonly overlay?: DeepPartial<OverlayTheme>;
+  /** One strategy, or several by name for `--auth <name>`. */
+  readonly auth?: AuthConfig;
   readonly timeouts?: {
     readonly setupMs?: number;
     readonly runMs?: number;
@@ -67,6 +71,7 @@ export interface ResolvedConfig {
   readonly deliverables: EncodeSettings;
   readonly browser: BrowserConfig;
   readonly overlay: DeepPartial<OverlayTheme>;
+  readonly auth: Readonly<Record<string, AuthStrategy>>;
   readonly timeouts: {
     readonly setupMs: number;
     readonly runMs: number;
@@ -211,6 +216,7 @@ export function resolveConfig(
     deliverables: { ...DEFAULT_ENCODE_SETTINGS, ...raw.deliverables },
     browser,
     overlay: { ...DEFAULT_OVERLAY_THEME, ...raw.overlay },
+    auth: normaliseAuth(raw.auth),
     timeouts: {
       setupMs: raw.timeouts?.setupMs ?? 120_000,
       runMs: raw.timeouts?.runMs ?? 300_000,
@@ -322,4 +328,54 @@ export async function loadScenarioFiles(files: readonly string[]): Promise<Loade
   }
 
   return loaded;
+}
+
+/**
+ * Normalises the config's `auth` into a name -> strategy map.
+ *
+ * A single strategy becomes `{ default: it }`, so a scenario saying
+ * `auth: true` or nothing at all resolves without the config author having to
+ * name anything.
+ */
+export function normaliseAuth(auth: AuthConfig | undefined): Record<string, AuthStrategy> {
+  if (!auth) return { none: noAuth() };
+  if (typeof (auth as AuthStrategy).name === "string") {
+    return { default: auth as AuthStrategy };
+  }
+  return auth as Record<string, AuthStrategy>;
+}
+
+/**
+ * Picks the strategy for a take.
+ *
+ * `false` on a scenario, or `--no-auth`, means signed out - a deliberate
+ * choice worth being able to make per scenario, since a landing page and a
+ * dashboard often live in the same config.
+ */
+export function selectStrategy(
+  config: ResolvedConfig,
+  scenarioAuth: string | false | undefined,
+  override?: string | false,
+): AuthStrategy | null {
+  const chosen = override !== undefined ? override : scenarioAuth;
+  if (chosen === false) return null;
+
+  const names = Object.keys(config.auth);
+  if (chosen === undefined) {
+    const only = names.length === 1 ? names[0] : undefined;
+    const name = config.auth["default"] ? "default" : only;
+    const strategy = name ? config.auth[name] : undefined;
+    return !strategy || strategy.name === "none" ? null : strategy;
+  }
+
+  const strategy = config.auth[chosen];
+  if (!strategy) {
+    throw new ScreencastError(`Unknown auth strategy: ${chosen}`, "UNKNOWN_AUTH", [
+      names.length > 0
+        ? `This config defines: ${names.join(", ")}`
+        : "No auth strategies are configured. Add one under `auth` in screencast.config.ts",
+      "Use `--no-auth` to record signed out",
+    ]);
+  }
+  return strategy.name === "none" ? null : strategy;
 }

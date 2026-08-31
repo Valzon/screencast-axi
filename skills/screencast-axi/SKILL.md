@@ -40,8 +40,10 @@ Two things worth knowing before the first run:
 2. When a selector needs discovering, drive the page live with a browser tool
    such as `chrome-devtools-axi`, then write the scenario.
 
-ffmpeg must be installed. Sign-in is not wired up yet, so signed-in pages are
-not recordable in this release - say so plainly rather than guessing at a flag.
+ffmpeg must be installed. For a page behind a login, read
+`guide auth`: signing in is a one-time human step (`auth login`), and the
+CLI refuses rather than prompting when no person is present - relay that
+command to the user instead of trying to sign in yourself.
 
 You do not need screencast-axi installed globally - invoke it with
 `npx -y screencast-axi <command>`. If its output suggests a follow-up command

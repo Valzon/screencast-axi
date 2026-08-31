@@ -1,6 +1,7 @@
 import { rm } from "node:fs/promises";
 import { captureSize, openContext, resolveViewport, type ResolvedViewport } from "./browser.js";
-import type { ResolvedConfig } from "./config.js";
+import { selectStrategy, type ResolvedConfig } from "./config.js";
+import type { AuthContext, AuthIdentity } from "./auth/types.js";
 import { Director } from "./director.js";
 import { encode, type EncodeResult } from "./encode.js";
 import { ScreencastError } from "./errors.js";
@@ -27,6 +28,8 @@ export interface RunOptions {
   readonly viewport?: Viewport;
   readonly orientation?: "portrait" | "landscape";
   readonly keepRaw?: boolean;
+  /** Named strategy, or false to record signed out. */
+  readonly auth?: string | false;
   readonly toolchain?: Toolchain;
   /** Progress, to stderr. stdout stays reserved for the final payload. */
   log?(message: string): void;
@@ -41,6 +44,7 @@ export interface RunResult {
   readonly pace: number;
   readonly viewport: ResolvedViewport;
   readonly steps: readonly string[];
+  readonly identity?: AuthIdentity;
   /** Present only for a recording. */
   readonly encoded?: EncodeResult;
   readonly manifestPath?: string;
@@ -144,6 +148,19 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
     if (!toolchain.ffmpeg) throw missingFfmpegError();
   }
 
+  const strategy = selectStrategy(config, scenario.auth, options.auth);
+  const authCtx: AuthContext = {
+    baseUrl,
+    rootDir: config.rootDir,
+    scenario: { id: scenario.id, title: scenario.title },
+    log: (message) => log(`  ${message}`),
+  };
+
+  // Before the browser opens, so an unreachable auth server costs a second
+  // rather than a take that has already started recording.
+  await strategy?.preflight?.(authCtx);
+  const patch = strategy?.prepareContext?.(authCtx) ?? {};
+
   const opened = await openContext({
     resolved: viewport,
     headless: options.headed ? false : config.browser.headless,
@@ -153,6 +170,8 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
     ...(config.browser.colorScheme ? { colorScheme: config.browser.colorScheme } : {}),
     ...(config.browser.locale ? { locale: config.browser.locale } : {}),
     ...(config.browser.timezoneId ? { timezoneId: config.browser.timezoneId } : {}),
+    ...(patch.storageState ? { storageState: patch.storageState } : {}),
+    ...(patch.httpCredentials ? { httpCredentials: patch.httpCredentials } : {}),
   });
 
   await opened.context.addInitScript({
@@ -182,6 +201,7 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
 
   let clipEndedAt = opened.createdAt;
   let rawVideoPath: string | null = null;
+  let identity: AuthIdentity | undefined;
 
   /**
    * Turns a thrown error into a failure that carries the page's state.
@@ -213,6 +233,11 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
     log(`${scenario.id}: ${baseUrl} at ${viewport.viewport.width}x${viewport.viewport.height}`);
 
     try {
+      if (strategy) {
+        identity = (await strategy.signIn?.(opened.page, authCtx)) ?? identity;
+        await strategy.assertSignedIn?.(opened.page, authCtx);
+        log(`  signed in via ${strategy.name}${identity ? ` as ${identity.label}` : ""}`);
+      }
       await scenario.setup?.(opened.page, ctx);
     } catch (error) {
       await fail("setup", error);
@@ -251,6 +276,7 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
       pace,
       viewport,
       steps: scenario.steps ?? [],
+      ...(identity ? { identity } : {}),
     };
   }
 
@@ -311,6 +337,7 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
     pace,
     viewport,
     steps: scenario.steps ?? [],
+    ...(identity ? { identity } : {}),
     encoded,
     manifestPath,
     entry,

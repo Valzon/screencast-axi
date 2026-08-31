@@ -7,6 +7,7 @@ import { homeView } from "./commands/home.js";
 import { guideCommand, guideHelp } from "./commands/guide.js";
 import { recordCommand, RECORD_FLAGS, REHEARSE_FLAGS } from "./commands/record.js";
 import { scaffoldCommand, SCAFFOLD_FLAGS } from "./commands/scaffold.js";
+import { authCommand, AUTH_FLAGS } from "./commands/auth.js";
 import { renderFlagHelp, type FlagSpecs } from "./flags.js";
 
 export const DESCRIPTION =
@@ -26,6 +27,7 @@ const TOP_LEVEL_HELP = `${[
   `  scaffold <id>        Write a scenario skeleton`,
   `  rehearse <id|path>   Run a scenario without recording - proves the selectors`,
   `  record   <id|path>   Run it for real and encode the clip`,
+  `  auth login|check     Sign in by hand once, or check the saved session`,
   `  guide [topic]        Topic-sized guidance. Run bare to list topics`,
   ``,
   `flags must come after the command. \`--version\`, \`--help\` excepted.`,
@@ -60,6 +62,16 @@ const COMMAND_HELP: Record<string, string> = {
     "Run a scenario without recording or encoding, to prove its selectors",
     ["screencast-axi rehearse <id>", "screencast-axi rehearse ./tour.ts --headed"],
     REHEARSE_FLAGS,
+  ),
+  auth: commandHelp(
+    "auth",
+    "Sign in by hand once; every take afterwards reuses the session",
+    [
+      "screencast-axi auth login --interactive   Opens a browser for a person to sign in",
+      "screencast-axi auth check                 Reports whether the session still works",
+      "screencast-axi auth check <name>          A named strategy from the config",
+    ],
+    AUTH_FLAGS,
   ),
   scaffold: commandHelp(
     "scaffold",
@@ -145,6 +157,7 @@ export async function main(argv?: string[]): Promise<void> {
     commands: {
       guide: (args) => guideCommand(args),
       scaffold: (args) => scaffoldCommand(args),
+      auth: (args) => authCommand(args),
       record: (args) => recordCommand(args, "record"),
       rehearse: (args) => recordCommand(args, "rehearse"),
     },

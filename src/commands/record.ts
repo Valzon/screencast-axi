@@ -21,6 +21,8 @@ const SHARED: FlagSpecs = {
   viewport: { kind: "string", description: "Explicit size, e.g. 390x844", placeholder: "WxH" },
   orientation: { kind: "string", description: "portrait or landscape", placeholder: "o" },
   headed: { kind: "boolean", description: "Show the browser while it runs" },
+  auth: { kind: "string", description: "Named auth strategy from the config", placeholder: "name" },
+  "no-auth": { kind: "boolean", description: "Record signed out" },
 };
 
 export const RECORD_FLAGS: FlagSpecs = {
@@ -129,6 +131,7 @@ function describe(result: RunResult, solution?: PaceSolution): AxiStructuredOutp
         }
       : {}),
     ...(result.viewport.device ? { device: result.viewport.device } : {}),
+    ...(result.identity ? { as: result.identity.label } : {}),
     ...(files.length > 0 ? { files } : {}),
     ...(result.steps.length > 0 ? { steps: result.steps } : {}),
     ...(result.manifestPath ? { manifest: result.manifestPath } : {}),
@@ -181,6 +184,11 @@ export async function recordCommand(args: string[], mode: RunMode): Promise<AxiS
       ...(orientation ? { orientation } : {}),
       ...(flags["headed"] === true ? { headed: true } : {}),
       ...(flags["keep-raw"] === true ? { keepRaw: true } : {}),
+      ...(flags["no-auth"] === true
+        ? { auth: false as const }
+        : flags["auth"]
+          ? { auth: flags["auth"] as string }
+          : {}),
       ...(viewport ? { viewport } : {}),
       ...(toolchain ? { toolchain } : {}),
       // stderr: stdout stays reserved for the final payload.
