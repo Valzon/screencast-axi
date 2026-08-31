@@ -188,7 +188,12 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
 
   const director = new Director(
     opened.page,
-    { baseUrl, pace, ...(scenario.steps ? { steps: scenario.steps } : {}) },
+    {
+      baseUrl,
+      pace,
+      settleMs: config.timeouts.settleMs,
+      ...(scenario.steps ? { steps: scenario.steps } : {}),
+    },
     opened.createdAt,
   );
 

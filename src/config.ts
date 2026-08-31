@@ -3,6 +3,7 @@ import { existsSync, readdirSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { DEFAULT_ENCODE_SETTINGS, type EncodeSettings } from "./encode.js";
+import { DEFAULT_SETTLE_MS } from "./director.js";
 import { DEFAULT_OVERLAY_THEME, type DeepPartial, type OverlayTheme } from "./overlay.js";
 import { isScenario, type DefinedScenario, type Viewport } from "./types.js";
 import { noAuth } from "./auth/strategies.js";
@@ -53,6 +54,8 @@ export interface ScreencastConfig {
     readonly runMs?: number;
     /** Per-action timeout during a rehearsal. Deliberately short. */
     readonly rehearseMs?: number;
+    /** Ceiling on how long `goto` waits for the network to go quiet. */
+    readonly settleMs?: number;
   };
 }
 
@@ -76,6 +79,7 @@ export interface ResolvedConfig {
     readonly setupMs: number;
     readonly runMs: number;
     readonly rehearseMs: number;
+    readonly settleMs: number;
   };
 }
 
@@ -221,6 +225,7 @@ export function resolveConfig(
       setupMs: raw.timeouts?.setupMs ?? 120_000,
       runMs: raw.timeouts?.runMs ?? 300_000,
       rehearseMs: raw.timeouts?.rehearseMs ?? 8_000,
+      settleMs: raw.timeouts?.settleMs ?? DEFAULT_SETTLE_MS,
     },
   };
 }

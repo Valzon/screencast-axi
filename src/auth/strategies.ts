@@ -14,7 +14,13 @@ export interface ProfileAuthOptions {
   readonly landingPath?: string;
   /** Something only a signed-in page renders. The strongest check available. */
   readonly signedInSelector?: string;
-  /** Cookie the app sets once its own session is live. */
+  /**
+   * Cookie the app sets once its own session is live.
+   *
+   * `name=value` checks the value too. Presence alone is a weak test: plenty
+   * of sites set the same cookie to a signed-out value (GitHub sends
+   * `logged_in=no`), so a name-only check quietly passes when it should not.
+   */
   readonly signedInCookie?: string;
   readonly label?: string;
 }
@@ -55,12 +61,19 @@ export function profileAuth(options: ProfileAuthOptions = {}): AuthStrategy {
       }
 
       if (options.signedInCookie) {
+        const [name, expected] = splitCookie(options.signedInCookie);
         const deadline = Date.now() + 15_000;
         for (;;) {
           const cookies = await page.context().cookies();
-          if (cookies.some((c) => c.name === options.signedInCookie)) return;
+          const found = cookies.find((c) => c.name === name);
+          if (found && (expected === undefined || found.value === expected)) return;
           if (Date.now() > deadline) {
-            throw notSignedIn(`the \`${options.signedInCookie}\` cookie never appeared`, ctx);
+            throw notSignedIn(
+              found
+                ? `\`${name}\` is \`${found.value}\`, expected \`${expected}\``
+                : `the \`${name}\` cookie never appeared`,
+              ctx,
+            );
           }
           await page.waitForTimeout(250);
         }
@@ -162,6 +175,12 @@ export function basicAuth(options: BasicAuthOptions): AuthStrategy {
     // The password is deliberately absent: `describe` output is printed.
     describe: () => ({ strategy: "basicAuth", username: options.username }),
   };
+}
+
+/** Splits `name=value` into its parts; a bare name means "any value". */
+export function splitCookie(spec: string): [name: string, value: string | undefined] {
+  const at = spec.indexOf("=");
+  return at === -1 ? [spec, undefined] : [spec.slice(0, at), spec.slice(at + 1)];
 }
 
 function notSignedIn(reason: string, ctx: AuthContext): ScreencastError {

@@ -4,6 +4,7 @@ import { openContext, resolveViewport } from "../browser.js";
 import { loadConfig, selectStrategy } from "../config.js";
 import { ScreencastError } from "../errors.js";
 import { parseFlags, type FlagSpecs } from "../flags.js";
+import { parseDuration } from "../duration.js";
 import type { AxiStructuredOutput } from "../output.js";
 import type { AuthContext } from "../auth/types.js";
 
@@ -17,6 +18,11 @@ export const AUTH_FLAGS: FlagSpecs = {
     placeholder: "path",
   },
   headed: { kind: "boolean", description: "Show the browser for `check`" },
+  wait: {
+    kind: "string",
+    description: "How long `login` waits for the window to close (default 5m)",
+    placeholder: "5m",
+  },
 };
 
 function contextFor(baseUrl: string, rootDir: string): AuthContext {
@@ -26,6 +32,41 @@ function contextFor(baseUrl: string, rootDir: string): AuthContext {
     scenario: { id: "auth", title: "Sign-in check" },
     log: (message) => void process.stderr.write(`  ${message}\n`),
   };
+}
+
+/**
+ * Whether a browser window could actually be seen by someone.
+ *
+ * On Linux a missing DISPLAY means no window can appear at all, so waiting for
+ * one to close is dead time. macOS and Windows always have a desktop for a
+ * logged-in session.
+ */
+function hasDisplay(): boolean {
+  if (process.platform !== "linux") return true;
+  return Boolean(process.env["DISPLAY"] ?? process.env["WAYLAND_DISPLAY"]);
+}
+
+async function withTimeout<T>(work: Promise<T>, ms: number, baseUrl: string): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      work,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () =>
+            reject(
+              new ScreencastError("Timed out waiting for the sign-in window", "LOGIN_TIMEOUT", [
+                "Nothing was saved. Run it again when there is time to finish signing in",
+                `Give it longer with \`--wait 15m\`, or sign in at ${baseUrl} first`,
+              ]),
+            ),
+          ms,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 export async function authCommand(args: string[]): Promise<AxiStructuredOutput> {
@@ -80,9 +121,14 @@ type Flags = Readonly<Record<string, unknown>>;
  * two-factor are all just "the person does the thing", and the session lands
  * in the profile.
  *
- * It never reads stdin. Without a TTY, or without `--interactive`, it refuses
- * immediately and says who has to run it - a CLI that blocks waiting for input
- * inside an agent loop is a hang, not a prompt.
+ * It never reads stdin, so an agent can open the window on the user's screen
+ * rather than making them retype a command. What it must never do is hang: the
+ * wait is bounded, it says on stderr what it is waiting for, and it refuses up
+ * front where no window could appear (a headless Linux box has no display, so
+ * nobody would ever see it and the wait would be pure dead time).
+ *
+ * `--interactive` stays required. An agent reaching for `auth login` without
+ * meaning to involve a person should be told to, not quietly open a window.
  */
 async function login(
   config: Config,
@@ -102,11 +148,18 @@ async function login(
     );
   }
 
-  if (flags["interactive"] !== true || !process.stdout.isTTY) {
+  if (flags["interactive"] !== true) {
     throw new ScreencastError("Signing in needs a person at the keyboard", "NEEDS_HUMAN", [
-      "Ask the user to run this themselves, in their own terminal:",
+      "Pass `--interactive` to open a browser window for them to sign in",
+      "The window has to appear on a screen someone is actually looking at",
+    ]);
+  }
+
+  if (!hasDisplay()) {
+    throw new ScreencastError("No display to open a browser window on", "NO_DISPLAY", [
+      "Ask the user to run this on their own machine:",
       `  npx -y screencast-axi auth login --interactive --base-url ${authCtx.baseUrl}`,
-      "It opens a browser; they sign in and close the window. Nothing is typed here.",
+      "Or produce a session file there and point `storageStateAuth` at it",
     ]);
   }
 
@@ -127,7 +180,20 @@ async function login(
   });
 
   try {
-    await strategy.interactiveLogin(opened.context, opened.page, authCtx);
+    const waitMs = flags["wait"] ? parseDuration(flags["wait"] as string) : 5 * 60_000;
+
+    // Immediately, and to stderr: a window has appeared somewhere and the
+    // process is now waiting on a human. Silence here reads as a hang.
+    process.stderr.write(
+      `A browser window is open at ${authCtx.baseUrl}.\n` +
+        `Sign in, then close the window. Waiting up to ${Math.round(waitMs / 60_000)} minutes.\n`,
+    );
+
+    await withTimeout(
+      strategy.interactiveLogin(opened.context, opened.page, authCtx),
+      waitMs,
+      authCtx.baseUrl,
+    );
 
     const savePath = flags["save-state"] as string | undefined;
     let saved: string | undefined;

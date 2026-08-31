@@ -9,3 +9,6 @@ tmp/
 # Editors / OS
 .DS_Store
 *.log
+
+# Scratch project for trying the CLI against a real site
+.demo/

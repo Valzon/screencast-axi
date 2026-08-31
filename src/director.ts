@@ -12,7 +12,21 @@ export interface DirectorOptions {
   readonly pace: number;
   /** The scenario's narration script, addressed by index from `step()`. */
   readonly steps?: readonly string[];
+  /**
+   * How long {@link Director.goto} will wait for the network to go quiet.
+   *
+   * Settling is an optimisation - start acting once the page has stopped
+   * moving - not a requirement, and it has to be bounded because plenty of
+   * real sites never go quiet at all. GitHub does not: analytics, websockets
+   * and polling keep at least one request in flight forever. Waiting on the
+   * default timeout there put up to 30 seconds of dead air *inside the clip*,
+   * silently, because the failure is caught and ignored.
+   */
+  readonly settleMs?: number;
 }
+
+/** Default ceiling on the post-navigation settle wait. */
+export const DEFAULT_SETTLE_MS = 2500;
 
 const EASE = (t: number) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
 
@@ -103,7 +117,11 @@ export class Director {
   async goto(path: string): Promise<void> {
     const url = path.startsWith("http") ? path : new URL(path, this.opts.baseUrl).toString();
     await this.page.goto(url, { waitUntil: "domcontentloaded" });
-    await this.page.waitForLoadState("networkidle").catch(() => undefined);
+    // Bounded on purpose: see `settleMs`. A page that has not gone quiet in a
+    // couple of seconds is not going to, and every extra second is recorded.
+    await this.page
+      .waitForLoadState("networkidle", { timeout: this.opts.settleMs ?? DEFAULT_SETTLE_MS })
+      .catch(() => undefined);
   }
 
   /** Which script lines this take put on screen, in order. */
