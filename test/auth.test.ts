@@ -24,8 +24,16 @@ describe("normalising the config's auth", () => {
 });
 
 describe("choosing a strategy for a take", () => {
-  it("uses the only configured strategy without being asked", () => {
+  it("uses a strategy the config supplied on its own", () => {
     expect(selectStrategy(config(profileAuth()), undefined)?.name).toBe("profile");
+  });
+
+  it("never auto-applies a named strategy, even a lone one", () => {
+    // Otherwise adding a second name would silently change what every
+    // unmarked scenario does - and a config with one login would sign every
+    // take into it, including the ones that should record signed out.
+    expect(selectStrategy(config({ demo: profileAuth() }), undefined)).toBeNull();
+    expect(selectStrategy(config({ demo: profileAuth() }), "demo")?.name).toBe("profile");
   });
 
   it("returns nothing when the config has no auth", () => {

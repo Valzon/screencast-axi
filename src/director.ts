@@ -203,6 +203,20 @@ export class Director {
     return target;
   }
 
+  /** Whether this target is a field whose value should never be logged. */
+  private async isSecret(target: Target): Promise<boolean> {
+    if (typeof target === "object" && "x" in target) return false;
+    try {
+      const type = await this.locator(target).getAttribute("type");
+      if (type?.toLowerCase() === "password") return true;
+    } catch {
+      // Not resolvable as an element - fall through to the name check, which
+      // is the only signal left.
+    }
+    const described = typeof target === "string" ? target : String(target);
+    return /pass(word|wd)?|secret|token|otp|\bpin\b/i.test(described);
+  }
+
   private async pointOf(target: Target): Promise<{ x: number; y: number }> {
     if (typeof target === "object" && "x" in target) return target;
     const locator = this.locator(target);
@@ -271,7 +285,11 @@ export class Director {
     text: string,
     { delay = 55, clear = false }: { delay?: number; clear?: boolean } = {},
   ): Promise<void> {
-    this.record("type", target, text);
+    // The action log exists to be read by someone deciding whether a scenario
+    // is safe to run, so it must not be the thing that leaks a credential into
+    // a terminal, a CI log or a screenshot of one. A password field records
+    // its length and nothing else.
+    this.record("type", target, (await this.isSecret(target)) ? maskOf(text) : text);
     await this.performClick(target, 180);
     if (clear) {
       await this.page.keyboard.press("ControlOrMeta+A");
@@ -493,6 +511,11 @@ export class Director {
       }
     }
   }
+}
+
+/** What a secret value looks like in the log: its shape, never its content. */
+function maskOf(text: string): string {
+  return `${"\u2022".repeat(Math.min(8, text.length))} (${text.length} chars)`;
 }
 
 /** A target as a short readable string, for the action log. */

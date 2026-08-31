@@ -66,19 +66,25 @@ describe("solving for pace", () => {
  * deviceScaleFactor renders, which on a phone is the whole difference between
  * readable UI text and a smear.
  */
+/**
+ * Regression: the capture used to be sized at the device's pixel ratio, on the
+ * theory that it would make a phone clip sharper. It does not - Playwright
+ * composites the page into the canvas without scaling up, so asking for more
+ * than the viewport put the page in the top-left corner and left the rest of
+ * every phone clip empty grey.
+ */
 describe("capture size", () => {
-  it("captures a phone at device pixels, not CSS pixels", () => {
+  it("never asks for more than the viewport", () => {
     const size = captureSize({
       viewport: { width: 390, height: 664 },
       deviceScaleFactor: 3,
       isMobile: true,
       hasTouch: true,
     });
-    expect(size.width).toBeGreaterThan(390);
-    expect(size.height).toBeLessThanOrEqual(1600);
+    expect(size).toEqual({ width: 390, height: 664 });
   });
 
-  it("leaves a desktop capture alone", () => {
+  it("leaves an ordinary desktop capture alone", () => {
     expect(
       captureSize({
         viewport: { width: 1280, height: 800 },
@@ -87,6 +93,17 @@ describe("capture size", () => {
         hasTouch: false,
       }),
     ).toEqual({ width: 1280, height: 800 });
+  });
+
+  it("scales a very large viewport down, keeping the aspect", () => {
+    const size = captureSize({
+      viewport: { width: 3000, height: 2000 },
+      deviceScaleFactor: 1,
+      isMobile: false,
+      hasTouch: false,
+    });
+    expect(Math.max(size.width, size.height)).toBeLessThanOrEqual(1600);
+    expect(size.width / size.height).toBeCloseTo(3000 / 2000, 2);
   });
 
   it("keeps both dimensions even, which h264 requires", () => {
@@ -98,15 +115,5 @@ describe("capture size", () => {
     });
     expect(size.width % 2).toBe(0);
     expect(size.height % 2).toBe(0);
-  });
-
-  it("preserves the aspect ratio when it has to cap", () => {
-    const size = captureSize({
-      viewport: { width: 390, height: 844 },
-      deviceScaleFactor: 3,
-      isMobile: true,
-      hasTouch: true,
-    });
-    expect(size.width / size.height).toBeCloseTo(390 / 844, 2);
   });
 });

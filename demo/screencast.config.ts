@@ -1,4 +1,5 @@
 import { defineConfig } from "screencast-axi";
+import { formLogin } from "./auth/form-login.ts";
 
 /**
  * The config behind the clip in the README.
@@ -13,6 +14,10 @@ export default defineConfig({
   scenarios: ["scenarios/*.ts"],
   viewport: { width: 880, height: 520 },
   outDir: "../docs",
+
+  // Named, so a scenario opts in with `auth: "demo"` and everything else
+  // records signed out.
+  auth: { demo: formLogin() },
 
   deliverables: {
     // Small on purpose: this loads on every view of the README.

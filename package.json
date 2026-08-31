@@ -60,7 +60,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepublishOnly": "pnpm run build",
-    "demo": "node dist/bin/screencast-axi.js record demo --gif --webp --config demo/screencast.config.ts"
+    "demo": "node dist/bin/screencast-axi.js record demo --gif --webp --config demo/screencast.config.ts",
+    "demo:usecases": "node dist/bin/screencast-axi.js record usecase-anysite --gif --webp --loop-width 480 --loop-fps 10 --config demo/screencast.config.ts && node dist/bin/screencast-axi.js record usecase-login --gif --webp --loop-width 460 --loop-fps 10 --config demo/screencast.config.ts && node dist/bin/screencast-axi.js record usecase-mobile --gif --webp --loop-width 260 --loop-fps 11 --config demo/screencast.config.ts"
   },
   "license": "MIT",
   "engines": {

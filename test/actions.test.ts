@@ -21,6 +21,7 @@ describe("the action log", () => {
         `<body style="height:3000px">
            <h1 id="title">hello</h1>
            <input id="field" />
+           <input id="secret" type="password" />
            <button id="go">Go</button>
          </body>`,
       );
@@ -68,6 +69,34 @@ describe("the action log", () => {
     // Timestamps advance, so the log reads as a sequence.
     const times = director.performed.map((a) => a.atMs);
     expect([...times].sort((a, b) => a - b)).toEqual(times);
+    await page.close();
+  }, 60_000);
+
+  /**
+   * The log is meant to be read by someone deciding whether a scenario is safe
+   * to run, so it must not be the thing that leaks a credential into a
+   * terminal, a CI log, or a screenshot of one.
+   */
+  it("never records what was typed into a password field", async () => {
+    const page = await browser.newPage();
+    const director = new Director(page, { baseUrl, pace: 0.1, settleMs: 200 }, Date.now());
+    await director.goto("/");
+    await director.type("#secret", "hunter2-and-then-some");
+
+    const typed = director.performed.find((a) => a.kind === "type");
+    expect(typed?.target).toBe("#secret");
+    expect(typed?.detail).not.toContain("hunter2");
+    // The shape is still useful for spotting an empty or truncated value.
+    expect(typed?.detail).toContain("21 chars");
+  }, 60_000);
+
+  it("masks by name when the field cannot be inspected", async () => {
+    const page = await browser.newPage();
+    const director = new Director(page, { baseUrl, pace: 0.1, settleMs: 200 }, Date.now());
+    await director.goto("/");
+    await director.type("#field", "s3cret-value").catch(() => undefined);
+    // #field is a plain text input, so it is logged in full.
+    expect(director.performed.find((a) => a.kind === "type")?.detail).toBe("s3cret-value");
     await page.close();
   }, 60_000);
 

@@ -7,7 +7,7 @@ import { encode, type EncodeResult, type EncodeSettings } from "./encode.js";
 import { ScreencastError } from "./errors.js";
 import { captureFailure, type Forensics } from "./forensics.js";
 import { hashSteps, hashText, upsertEntry, type ManifestEntry } from "./manifest.js";
-import { overlayInitScript, resolveOverlayTheme } from "./overlay.js";
+import { mergeThemes, overlayInitScript, resolveOverlayTheme } from "./overlay.js";
 import { detectToolchain, missingFfmpegError, type Toolchain } from "./toolchain.js";
 import type { DefinedScenario, ScenarioContext, Viewport } from "./types.js";
 import { VERSION } from "./version.js";
@@ -181,7 +181,7 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
   });
 
   await opened.context.addInitScript({
-    content: overlayInitScript(resolveOverlayTheme(config.overlay)),
+    content: overlayInitScript(resolveOverlayTheme(mergeThemes(config.overlay, scenario.overlay))),
   });
 
   // A rehearsal exists to fail fast. Playwright's 30s default is right for a
@@ -202,6 +202,22 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
     },
     opened.createdAt,
   );
+
+  /**
+   * Every host the page actually reached.
+   *
+   * Taken from the page rather than from the Director's own actions, which is
+   * the difference between reporting where a scenario was *told* to go and
+   * where it *went*: a navigation inside `setup()` never touches the Director,
+   * and a redirect lands somewhere the scenario never named. For a summary
+   * whose whole job is "is this safe to run", the second is the honest one.
+   */
+  const hosts: string[] = [];
+  opened.page.on("framenavigated", (frame) => {
+    if (frame !== opened.page.mainFrame()) return;
+    const host = hostOf(frame.url());
+    if (host && !hosts.includes(host)) hosts.push(host);
+  });
 
   const ctx: ScenarioContext = {
     baseUrl,
@@ -288,7 +304,7 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
       viewport,
       steps: scenario.steps ?? [],
       performed: director.performed,
-      hosts: hostsVisited(director.performed),
+      hosts,
       ...(identity ? { identity } : {}),
     };
   }
@@ -352,7 +368,7 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
     viewport,
     steps: scenario.steps ?? [],
     performed: director.performed,
-    hosts: hostsVisited(director.performed),
+    hosts,
     ...(identity ? { identity } : {}),
     encoded,
     manifestPath,
@@ -384,25 +400,14 @@ function buildSuggestions(id: string, forensics: Forensics, mode: RunMode): stri
 }
 
 /**
- * The hosts a take actually reached.
- *
- * The short answer to "where did this thing go". A scenario is arbitrary code
- * driving a signed-in browser, and a list of two hosts is a very different
- * thing to read than a list of nine.
+ * Turns a URL into the thing worth reporting: its host, or its scheme when it
+ * has none (a `file://` page has no host, and a blank entry answers nothing).
  */
-function hostsVisited(actions: readonly DirectorAction[]): string[] {
-  const hosts: string[] = [];
-  for (const action of actions) {
-    if (action.kind !== "goto" || !action.target) continue;
-    try {
-      const url = new URL(action.target);
-      // A file:// URL has no host, and a blank entry answers nothing. Name the
-      // scheme instead, which is the fact that matters: it stayed local.
-      const host = url.host || `${url.protocol}//`;
-      if (!hosts.includes(host)) hosts.push(host);
-    } catch {
-      // Not an absolute URL; the goto resolved it against baseUrl already.
-    }
+function hostOf(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    return parsed.host || `${parsed.protocol}//`;
+  } catch {
+    return null;
   }
-  return hosts;
 }

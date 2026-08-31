@@ -1,5 +1,6 @@
 import type { Locator, Page } from "playwright";
 import type { Director } from "./director.js";
+import type { DeepPartial, OverlayTheme } from "./overlay.js";
 
 /** Anything a Director action can aim at. */
 export type Target = string | Locator | { x: number; y: number };
@@ -52,6 +53,14 @@ export interface Scenario {
   readonly steps?: readonly string[];
   /** Named auth strategy, or false for a signed-out recording. */
   readonly auth?: string | false;
+  /**
+   * Overlay overrides for this take, merged over the config's.
+   *
+   * A clip destined for a 300px slot in a README needs a larger caption than
+   * one shown full width, and a take on a dark page needs a different caption
+   * background - both are properties of the clip, not of the project.
+   */
+  readonly overlay?: DeepPartial<OverlayTheme>;
   /** Free-form labels for filtering in `list`. */
   readonly tags?: readonly string[];
   /** Runs before the clip starts: navigation, data setup, state reset. */

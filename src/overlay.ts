@@ -148,6 +148,22 @@ export type DeepPartial<T> = {
       : T[K];
 };
 
+export function mergeThemes(
+  base: DeepPartial<OverlayTheme> | undefined,
+  over: DeepPartial<OverlayTheme> | undefined,
+): DeepPartial<OverlayTheme> {
+  if (!base) return over ?? {};
+  if (!over) return base;
+  return {
+    ...base,
+    ...over,
+    pointer: { ...base.pointer, ...over.pointer },
+    ripple: { ...base.ripple, ...over.ripple },
+    dragGhost: { ...base.dragGhost, ...over.dragGhost },
+    caption: { ...base.caption, ...over.caption },
+  };
+}
+
 function mergeTheme(base: OverlayTheme, overrides?: DeepPartial<OverlayTheme>): OverlayTheme {
   if (!overrides) return base;
   return {

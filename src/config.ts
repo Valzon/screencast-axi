@@ -367,9 +367,12 @@ export function selectStrategy(
 
   const names = Object.keys(config.auth);
   if (chosen === undefined) {
-    const only = names.length === 1 ? names[0] : undefined;
-    const name = config.auth["default"] ? "default" : only;
-    const strategy = name ? config.auth[name] : undefined;
+    // Only a strategy the config supplied on its own - `auth: profileAuth()`,
+    // normalised to `default` - applies without being asked for. A named map
+    // never does, even when it holds exactly one entry: otherwise adding a
+    // second name would silently change what every unmarked scenario does, and
+    // a config with one login would quietly sign every take into it.
+    const strategy = config.auth["default"];
     return !strategy || strategy.name === "none" ? null : strategy;
   }
 

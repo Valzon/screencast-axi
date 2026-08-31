@@ -150,27 +150,30 @@ export interface ContextOptions {
 /**
  * Upper bound on either dimension of the raw capture.
  *
- * A phone preset at deviceScaleFactor 3 would otherwise capture at 1170x1992,
- * and a tablet higher still. Past this the file grows faster than anyone can
- * see the difference in a deliverable that gets scaled down anyway.
+ * A very large desktop viewport would otherwise produce a needlessly heavy
+ * capture that the deliverable scales down anyway.
  */
 const MAX_CAPTURE_EDGE = 1600;
 
 /**
  * The size the raw video is captured at.
  *
- * Playwright records at whatever `size` says, so recording at the CSS viewport
- * throws away the extra detail a device preset's `deviceScaleFactor` renders -
- * which on a phone is the whole difference between readable UI text and a
- * smear. Capturing at the device pixel size keeps it.
+ * Never larger than the viewport. Playwright renders the page at the CSS
+ * viewport and composites it into a canvas of this size *without scaling up* -
+ * measured in Chromium, asking for three times the viewport puts the page in
+ * the top-left corner and leaves the rest empty grey. Scaling down does work,
+ * which is what the cap relies on.
+ *
+ * So a device preset's `deviceScaleFactor` cannot buy a sharper capture: it
+ * still matters for how the page renders and lays itself out, but the video is
+ * CSS-pixel resolution either way.
  */
 export function captureSize(resolved: ResolvedViewport): Viewport {
   const { width, height } = resolved.viewport;
-  const scale = Math.max(1, resolved.deviceScaleFactor);
-  const limit = Math.min(1, MAX_CAPTURE_EDGE / Math.max(width * scale, height * scale));
+  const scale = Math.min(1, MAX_CAPTURE_EDGE / Math.max(width, height));
   // Even dimensions: h264's yuv420p requires them, and rounding here avoids a
   // one-pixel scale in the encoder.
-  const even = (n: number) => Math.max(2, Math.round((n * scale * limit) / 2) * 2);
+  const even = (n: number) => Math.max(2, Math.round((n * scale) / 2) * 2);
   return { width: even(width), height: even(height) };
 }
 

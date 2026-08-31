@@ -5,8 +5,8 @@ mp4 + webm + a poster out the other end. Built to [AXI](https://github.com/kunch
 conventions, so an agent can drive it as comfortably as a person can.
 
 <picture>
-  <source srcset="https://raw.githubusercontent.com/Valzon/screencast-axi/main/docs/demo.anim.webp" type="image/webp">
-  <img src="https://raw.githubusercontent.com/Valzon/screencast-axi/main/docs/demo.gif" alt="Three acts: a prompt asking for a clip, the scenario that gets written, and the recording it produces in a real app." width="640">
+  <source srcset="docs/demo.anim.webp" type="image/webp">
+  <img src="docs/demo.gif" alt="Three acts: a prompt asking for a clip, the scenario that gets written, and the recording it produces in a real app." width="640">
 </picture>
 
 <sup>The ask, the scenario that came back, and the take it produced - itself recorded by this tool,
@@ -14,6 +14,164 @@ from [`demo/scenarios/demo.ts`](demo/scenarios/demo.ts). Re-record it with `pnpm
 
 > **Status: 0.x and not yet published.** The recorder works end to end; the command surface is
 > still growing. See [Roadmap](#roadmap).
+
+## What the tool does
+
+The clips below were produced by this repo - the scenarios are in
+[`demo/scenarios/`](demo/scenarios/), and `pnpm demo:usecases` re-records them.
+
+### Point it at any site and describe the workflow
+
+There is no integration to write: no plugin for the site, no fixtures, no test IDs added to the
+page. A scenario names what to do, and the recorder does it.
+
+> _"Record a clip of searching Wikipedia for Ada Lovelace, opening the article, and jumping to the
+> Work section. Around ten seconds."_
+
+<picture>
+  <source srcset="docs/usecase-anysite.anim.webp" type="image/webp">
+  <img src="docs/usecase-anysite.gif" alt="Searching Wikipedia, watching live suggestions arrive, opening the article and jumping to a section." width="480">
+</picture>
+
+<sup>The whole scenario is [50 lines](demo/scenarios/anysite.ts), most of it narration and
+comments.</sup>
+
+### Records a sign-in, or skips past one
+
+A login is an ordinary workflow as far as the recorder is concerned: a field, a field, a button.
+It is worth filming, because it is the part of a product most demos skip.
+
+<picture>
+  <source srcset="docs/usecase-login.anim.webp" type="image/webp">
+  <img src="docs/usecase-login.gif" alt="A real login form being filled in and submitted, landing on the page behind it." width="460">
+</picture>
+
+For a real app you usually want the opposite - the clip should open already through the door
+rather than spend its first seconds on a form. So signing in becomes a one-time human step:
+
+```sh
+screencast-axi auth login --interactive
+```
+
+> **A real Chrome window opens on your screen, at the site you are recording.**
+> Sign in there however that site wants: password, SSO, a magic link, two-factor, a passkey.
+> Then **close the window** - closing it is the signal that you are done.
+> Nothing is ever typed into the terminal, and no credential passes through this package. The
+> session is saved into a Chrome profile on your machine, and every later take reuses it.
+
+An agent can open that window for you rather than making you retype the command, but it cannot
+sign in for you and will not try: without `--interactive` it stops and says a person is needed,
+and it refuses outright where no window could appear, such as a headless CI box. The wait is
+bounded, so it can never hang.
+
+For a login you can script, an `AuthStrategy` object in the config does the same job in typed
+code ([worked example](demo/auth/form-login.ts)). Either way it runs before recording starts, so
+none of it lands in the clip.
+
+### Renders at phone and tablet viewports
+
+```sh
+screencast-axi record onboarding --device "iPhone 13" --orientation portrait
+```
+
+A device preset does more than set a width. Its `isMobile` and `hasTouch` flags decide whether the
+site's own `@media (hover: none)` and touch rules apply at all, and it carries the right user
+agent - so this is the mobile layout the site actually serves, not a desktop squeezed narrow.
+Playwright ships 140+ presets; `--viewport 390x844` covers the rest.
+
+<picture>
+  <source srcset="docs/usecase-mobile.anim.webp" type="image/webp">
+  <img src="docs/usecase-mobile.gif" alt="The same workflow recorded in a portrait phone viewport." width="240">
+</picture>
+
+<sup>The video is captured at the CSS viewport - 390x664 here - because Playwright composites the
+page into the video canvas without scaling up. `deviceScaleFactor` still changes how the page
+renders and which images it picks, but not the resolution of the recording.</sup>
+
+### Shows you what it is doing
+
+A scenario is arbitrary code driving a real browser, often one signed into your own account, so
+"is this safe to run" deserves a better answer than "read the TypeScript".
+
+```sh
+screencast-axi rehearse <id> --headed
+```
+
+`--headed` runs it in a real window instead of hidden, so you can watch the whole thing. It does
+not change the output - the clip is identical either way - so it costs nothing but the window.
+
+Watching answers the question once, though, and only while you sit there. So a rehearsal also
+prints what it did, in a form you can read before running, diff after an edit, and keep:
+
+```
+$ screencast-axi rehearse usecase-login
+
+rehearsed: usecase-login
+duration_s: 10.8
+pace: 1
+viewport: 900x540
+steps[4]: A real login form,"Username, then password",Submitted for real,And the page behind it
+hosts[1]: the-internet.herokuapp.com
+performed[10]:
+  - at_s: 0.2
+    did: goto
+    target: "https://the-internet.herokuapp.com/login"
+  - at_s: 1.8
+    did: waitFor
+    target: #username
+  - at_s: 1.8
+    did: step
+    detail: A real login form
+  - at_s: 2.9
+    did: step
+    detail: "Username, then password"
+  - at_s: 2.9
+    did: type
+    target: #username
+    detail: tomsmith
+  - at_s: 4.3
+    did: type
+    target: #password
+    detail: •••••••• (20 chars)
+  - at_s: 7.1
+    did: step
+    detail: Submitted for real
+  - at_s: 7.1
+    did: click
+    target: "button[type=submit]"
+  - at_s: 8.2
+    did: waitFor
+    target: h2
+  - at_s: 8.8
+    did: step
+    detail: And the page behind it
+```
+
+Note the password: a field the log would otherwise leak records its shape and nothing else.
+
+`hosts` is the short answer to where it went, taken from the pages the browser actually reached -
+so a redirect or a navigation buried in `setup()` shows up too. A list of one host reads very
+differently from a list of nine.
+
+### Aims a clip at a length
+
+```sh
+screencast-axi record tour --duration 30s
+```
+
+One measuring pass, then it solves for the pace that lands near the target. A take is
+`fixed + pace x scalable` - the site's own waits do not get slower because the recorder does - so
+the solve uses the measured split rather than assuming everything scales. Pace is clamped to a
+watchable range, and a target outside it is reported rather than obeyed.
+
+### Emits what the destination needs
+
+mp4 and webm every time, plus a poster frame. `--gif` and `--webp` add looping images for the
+places a `<video>` does not render - a README, an npm page, an email. Every image on this page is
+one of them. See [Output formats](#output-formats) for what each costs.
+
+Drag-and-drop is handled too, including the HTML5 protocol that Chromium will not synthesise from
+mouse events - the interaction most likely to look like a teleport if a recorder cuts corners.
 
 ## Why a script, not a screen recorder
 

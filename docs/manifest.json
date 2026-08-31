@@ -25,5 +25,134 @@
     "sourceHash": "f6416da477d389b1",
     "stepsHash": "b00f25fa50644bd0",
     "recorderVersion": "0.0.0"
+  },
+  {
+    "id": "usecase-anysite",
+    "title": "Any site, any workflow",
+    "description": "Searching Wikipedia, opening an article and jumping to a section - on a site with no special support of any kind.",
+    "steps": [
+      "Start anywhere",
+      "Type the search the way a person would",
+      "Live suggestions, as they arrive",
+      "Open the article",
+      "Then jump to the section that matters"
+    ],
+    "width": 900,
+    "height": 482,
+    "durationMs": 9904,
+    "recordedAt": "2026-08-31T22:18:17.263Z",
+    "pace": 1,
+    "formats": [
+      "mp4",
+      "webm",
+      "webp",
+      "gif",
+      "webp"
+    ],
+    "sourceHash": "f57ffdbda5a96384",
+    "stepsHash": "eb3a04137a6819e3",
+    "recorderVersion": "0.0.0"
+  },
+  {
+    "id": "usecase-drag",
+    "title": "A drag, recorded so it reads",
+    "description": "Moving an item between two lists on the SortableJS demo.",
+    "steps": [
+      "Pick up the item",
+      "Carry it across",
+      "It lands where you dropped it"
+    ],
+    "width": 900,
+    "height": 560,
+    "durationMs": 7360,
+    "recordedAt": "2026-08-31T21:38:55.819Z",
+    "pace": 1,
+    "formats": [
+      "mp4",
+      "webm",
+      "webp",
+      "gif",
+      "webp"
+    ],
+    "sourceHash": "03403ca6fc774a48",
+    "stepsHash": "5e55564e0b5e023d",
+    "recorderVersion": "0.0.0"
+  },
+  {
+    "id": "usecase-login",
+    "title": "Recording a sign-in",
+    "description": "Typing credentials into a real login form and landing on the page behind it.",
+    "steps": [
+      "A real login form",
+      "Username, then password",
+      "Submitted for real",
+      "And the page behind it"
+    ],
+    "width": 900,
+    "height": 540,
+    "durationMs": 10264,
+    "recordedAt": "2026-08-31T22:06:38.258Z",
+    "pace": 1,
+    "formats": [
+      "mp4",
+      "webm",
+      "webp",
+      "gif",
+      "webp"
+    ],
+    "sourceHash": "481d768aee25b593",
+    "stepsHash": "3ea29c32b2bdad71",
+    "recorderVersion": "0.0.0"
+  },
+  {
+    "id": "usecase-mobile",
+    "title": "The same workflow, on a phone",
+    "description": "A mobile-shaped take of adding a task, at the device's own pixel density.",
+    "steps": [
+      "The real mobile layout",
+      "Typed on the phone",
+      "And there it is"
+    ],
+    "width": 390,
+    "height": 664,
+    "durationMs": 7521,
+    "recordedAt": "2026-08-31T22:06:55.245Z",
+    "pace": 1,
+    "device": "iPhone 13",
+    "formats": [
+      "mp4",
+      "webm",
+      "webp",
+      "gif",
+      "webp"
+    ],
+    "sourceHash": "e830539e13a17a00",
+    "stepsHash": "2e93a750481e0dee",
+    "recorderVersion": "0.0.0"
+  },
+  {
+    "id": "usecase-tour",
+    "title": "Three pages, one take",
+    "description": "A walkthrough of three pages, narrated and paced from one list of stops.",
+    "steps": [
+      "Start at the front door",
+      "The part people came for",
+      "And who is behind it"
+    ],
+    "width": 900,
+    "height": 560,
+    "durationMs": 11073,
+    "recordedAt": "2026-08-31T21:40:01.195Z",
+    "pace": 1,
+    "formats": [
+      "mp4",
+      "webm",
+      "webp",
+      "gif",
+      "webp"
+    ],
+    "sourceHash": "0c34a21bfe16f117",
+    "stepsHash": "68272f312dfccecc",
+    "recorderVersion": "0.0.0"
   }
 ]
