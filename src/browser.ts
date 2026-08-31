@@ -147,6 +147,33 @@ export interface ContextOptions {
   readonly httpCredentials?: { readonly username: string; readonly password: string };
 }
 
+/**
+ * Upper bound on either dimension of the raw capture.
+ *
+ * A phone preset at deviceScaleFactor 3 would otherwise capture at 1170x1992,
+ * and a tablet higher still. Past this the file grows faster than anyone can
+ * see the difference in a deliverable that gets scaled down anyway.
+ */
+const MAX_CAPTURE_EDGE = 1600;
+
+/**
+ * The size the raw video is captured at.
+ *
+ * Playwright records at whatever `size` says, so recording at the CSS viewport
+ * throws away the extra detail a device preset's `deviceScaleFactor` renders -
+ * which on a phone is the whole difference between readable UI text and a
+ * smear. Capturing at the device pixel size keeps it.
+ */
+export function captureSize(resolved: ResolvedViewport): Viewport {
+  const { width, height } = resolved.viewport;
+  const scale = Math.max(1, resolved.deviceScaleFactor);
+  const limit = Math.min(1, MAX_CAPTURE_EDGE / Math.max(width * scale, height * scale));
+  // Even dimensions: h264's yuv420p requires them, and rounding here avoids a
+  // one-pixel scale in the encoder.
+  const even = (n: number) => Math.max(2, Math.round((n * scale * limit) / 2) * 2);
+  return { width: even(width), height: even(height) };
+}
+
 export interface OpenedContext {
   readonly context: BrowserContext;
   readonly page: Page;
@@ -189,7 +216,7 @@ export async function openContext(options: ContextOptions): Promise<OpenedContex
     ...(options.timezoneId ? { timezoneId: options.timezoneId } : {}),
     ...(options.httpCredentials ? { httpCredentials: options.httpCredentials } : {}),
     ...(options.recordVideoDir
-      ? { recordVideo: { dir: options.recordVideoDir, size: resolved.viewport } }
+      ? { recordVideo: { dir: options.recordVideoDir, size: captureSize(resolved) } }
       : {}),
   };
 

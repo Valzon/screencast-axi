@@ -24,6 +24,7 @@ export interface BrowserConfig {
    * survives between takes. Absent means an isolated context per take.
    */
   readonly profileDir?: string;
+  /** Overrides a device preset's own scale factor. Rarely wanted. */
   readonly deviceScaleFactor?: number;
   readonly args: readonly string[];
   readonly colorScheme?: "light" | "dark";
@@ -185,7 +186,12 @@ export function resolveConfig(
   const browser: BrowserConfig = {
     headless: raw.browser?.headless ?? true,
     ...(raw.browser?.profileDir ? { profileDir: at(raw.browser.profileDir) } : {}),
-    deviceScaleFactor: raw.browser?.deviceScaleFactor ?? 1,
+    // No default: a device preset carries its own (2-3 on phones), and a
+    // config-level default of 1 would silently override it and throw away the
+    // detail that makes a phone clip readable.
+    ...(raw.browser?.deviceScaleFactor !== undefined
+      ? { deviceScaleFactor: raw.browser.deviceScaleFactor }
+      : {}),
     args: raw.browser?.args ?? DEFAULT_BROWSER_ARGS,
     ...(raw.browser?.colorScheme ? { colorScheme: raw.browser.colorScheme } : {}),
     ...(raw.browser?.locale ? { locale: raw.browser.locale } : {}),

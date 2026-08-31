@@ -16,6 +16,22 @@ export interface DirectorOptions {
 
 const EASE = (t: number) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
 
+/** One stop on a {@link Director.tour}. */
+export interface TourStop {
+  /** Path or absolute URL to open. */
+  readonly path: string;
+  /** Index into the scenario's `steps`. Preferred over `caption`. */
+  readonly step?: number;
+  /** Ad-hoc caption, for a tour whose narration is not in `steps`. */
+  readonly caption?: string;
+  /** Scroll after the caption lands: a fraction of the viewport, or pixels. */
+  readonly scroll?: number;
+  /** Override the shared dwell for this stop. */
+  readonly dwellMs?: number;
+  /** Wait for this before narrating, so a slow page does not get a jump cut. */
+  readonly waitFor?: Target;
+}
+
 /** State of an in-flight {@link Director.dragHtml5} gesture, held in the page. */
 interface DndWindow {
   __screencastDnd: { dt: DataTransfer; source: Element; over: Element | null } | null;
@@ -36,6 +52,15 @@ export class Director {
   private clipStartedAt: number | null = null;
   /** Indices passed to {@link step}, in the order the take showed them. */
   private readonly shown: number[] = [];
+  /**
+   * Milliseconds spent in pauses this class controls.
+   *
+   * A take is `fixed + pace x scalable`: the app's own waits - navigation, a
+   * network round trip, an animation - do not get slower because the recorder
+   * does. Tracking the scalable half is what lets `--duration` solve for a
+   * pace exactly rather than assuming the whole clip scales.
+   */
+  private pausedMs = 0;
 
   constructor(
     readonly page: Page,
@@ -58,9 +83,21 @@ export class Director {
     return Math.max(0, Math.round(ms * this.opts.pace));
   }
 
+  /** Pace-scaled pause. Every wait this class owns goes through here. */
+  private async pause(ms: number): Promise<void> {
+    const scaled = this.scaled(ms);
+    this.pausedMs += scaled;
+    await this.page.waitForTimeout(scaled);
+  }
+
+  /** How much of the take so far was pause this class controls, in ms. */
+  get scaledPauseMs(): number {
+    return this.pausedMs;
+  }
+
   /** A deliberate pause so the viewer can read what just happened. */
   async beat(ms = 700): Promise<void> {
-    await this.page.waitForTimeout(this.scaled(ms));
+    await this.pause(ms);
   }
 
   async goto(path: string): Promise<void> {
@@ -134,7 +171,7 @@ export class Director {
     for (let i = 1; i <= count; i++) {
       const t = EASE(i / count);
       await this.page.mouse.move(from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t);
-      if (!first) await this.page.waitForTimeout(this.scaled(12));
+      if (!first) await this.pause(12);
     }
     this.pointer = to;
   }
@@ -144,7 +181,7 @@ export class Director {
     await this.moveTo(target);
     await this.beat(settleMs);
     await this.page.mouse.down();
-    await this.page.waitForTimeout(this.scaled(70));
+    await this.pause(70);
     await this.page.mouse.up();
     await this.beat(320);
   }
@@ -171,7 +208,9 @@ export class Director {
       await this.page.keyboard.press("ControlOrMeta+A");
       await this.beat(160);
     }
-    await this.page.keyboard.type(text, { delay: this.scaled(delay) });
+    const perChar = this.scaled(delay);
+    this.pausedMs += perChar * text.length;
+    await this.page.keyboard.type(text, { delay: perChar });
     await this.beat(300);
   }
 
@@ -208,7 +247,7 @@ export class Director {
         start.y + (target.y - start.y) * t,
         { steps: 2 },
       );
-      await this.page.waitForTimeout(this.scaled(16));
+      await this.pause(16);
     }
     this.pointer = target;
 
@@ -274,7 +313,7 @@ export class Director {
       const at = { x: start.x + (target.x - start.x) * t, y: start.y + (target.y - start.y) * t };
       await this.page.mouse.move(at.x, at.y, { steps: 2 });
       await this.dndEvent("dragover", at);
-      await this.page.waitForTimeout(this.scaled(16));
+      await this.pause(16);
     }
     this.pointer = target;
 
@@ -335,12 +374,49 @@ export class Director {
     const per = deltaY / steps;
     for (let i = 0; i < steps; i++) {
       await this.page.mouse.wheel(0, per);
-      await this.page.waitForTimeout(this.scaled(16));
+      await this.pause(16);
     }
     await this.beat(400);
   }
 
   async waitFor(target: Target): Promise<void> {
     await this.locator(target).waitFor({ state: "visible" });
+  }
+
+  /**
+   * A multi-page walkthrough: go somewhere, narrate it, let it breathe, move on.
+   *
+   * This is the shape most requests actually have ("a walkthrough of the five
+   * main pages"), and writing it by hand is fifty lines of goto/caption/scroll
+   * whose only real content is the paths. Going through one helper also keeps
+   * the rhythm identical between stops, which is most of what makes a tour
+   * watchable rather than a run of jump cuts.
+   *
+   * Every pause here is pace-scaled like any other, so `--duration` re-cuts a
+   * tour without the scenario changing.
+   */
+  async tour(
+    stops: readonly TourStop[],
+    { dwellMs = 1400 }: { dwellMs?: number } = {},
+  ): Promise<void> {
+    for (const stop of stops) {
+      await this.goto(stop.path);
+
+      if (stop.waitFor) await this.waitFor(stop.waitFor);
+      if (stop.step !== undefined) await this.step(stop.step);
+      else if (stop.caption) await this.caption(stop.caption);
+
+      await this.beat(stop.dwellMs ?? dwellMs);
+
+      if (stop.scroll) {
+        // A value of 1 or less is a share of the viewport, which reads the
+        // same on a phone and a desktop; anything larger is pixels.
+        const viewport = this.page.viewportSize();
+        const amount =
+          stop.scroll <= 1 && viewport ? Math.round(viewport.height * stop.scroll) : stop.scroll;
+        await this.scrollBy(amount);
+        await this.beat(stop.dwellMs ?? dwellMs);
+      }
+    }
   }
 }

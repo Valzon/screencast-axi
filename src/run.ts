@@ -1,5 +1,5 @@
 import { rm } from "node:fs/promises";
-import { openContext, resolveViewport, type ResolvedViewport } from "./browser.js";
+import { captureSize, openContext, resolveViewport, type ResolvedViewport } from "./browser.js";
 import type { ResolvedConfig } from "./config.js";
 import { Director } from "./director.js";
 import { encode, type EncodeResult } from "./encode.js";
@@ -8,7 +8,7 @@ import { captureFailure, type Forensics } from "./forensics.js";
 import { hashSteps, hashText, upsertEntry, type ManifestEntry } from "./manifest.js";
 import { overlayInitScript, resolveOverlayTheme } from "./overlay.js";
 import { detectToolchain, missingFfmpegError, type Toolchain } from "./toolchain.js";
-import type { DefinedScenario, ScenarioContext } from "./types.js";
+import type { DefinedScenario, ScenarioContext, Viewport } from "./types.js";
 import { VERSION } from "./version.js";
 
 export type RunMode = "record" | "rehearse";
@@ -24,6 +24,7 @@ export interface RunOptions {
   readonly pace?: number;
   readonly headed?: boolean;
   readonly device?: string;
+  readonly viewport?: Viewport;
   readonly orientation?: "portrait" | "landscape";
   readonly keepRaw?: boolean;
   readonly toolchain?: Toolchain;
@@ -35,6 +36,8 @@ export interface RunResult {
   readonly id: string;
   readonly mode: RunMode;
   readonly durationMs: number;
+  /** Of that, how much was pace-scaled pause rather than the app's own waits. */
+  readonly scaledPauseMs: number;
   readonly pace: number;
   readonly viewport: ResolvedViewport;
   readonly steps: readonly string[];
@@ -120,11 +123,13 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
       ...((options.device ?? scenario.device ?? config.device)
         ? { device: options.device ?? scenario.device ?? config.device }
         : {}),
-      ...(scenario.viewport ? { viewport: scenario.viewport } : {}),
+      ...((options.viewport ?? scenario.viewport)
+        ? { viewport: options.viewport ?? scenario.viewport }
+        : {}),
       ...((options.orientation ?? scenario.orientation)
         ? { orientation: options.orientation ?? scenario.orientation }
         : {}),
-      ...(config.browser.deviceScaleFactor
+      ...(config.browser.deviceScaleFactor !== undefined
         ? { deviceScaleFactor: config.browser.deviceScaleFactor }
         : {}),
     },
@@ -242,6 +247,7 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
       id: scenario.id,
       mode,
       durationMs,
+      scaledPauseMs: director.scaledPauseMs,
       pace,
       viewport,
       steps: scenario.steps ?? [],
@@ -255,8 +261,17 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
     ]);
   }
 
+  // Never scale beyond what was captured: upscaling a 390px phone capture to
+  // a 1280px deliverable multiplies the file size without adding a pixel of
+  // detail. Height follows the source aspect rather than being measured, so a
+  // consumer can size the player before the video decodes.
+  const capture = captureSize(viewport);
+  const width = Math.min(config.deliverables.width, capture.width);
+  const height = Math.round(((width / capture.width) * capture.height) / 2) * 2;
+
   const encoded = await encode({
     ...config.deliverables,
+    width,
     input: rawVideoPath,
     outDir,
     id: scenario.id,
@@ -266,13 +281,6 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
 
   if (!options.keepRaw) await rm(rawVideoPath, { force: true });
 
-  // Height is derived from the source aspect rather than measured, so a
-  // consumer can size the player before the video decodes.
-  const height =
-    Math.round(
-      ((config.deliverables.width / viewport.viewport.width) * viewport.viewport.height) / 2,
-    ) * 2;
-
   const formats = Object.keys(encoded.sizes).map((f) => f.split(".").pop() ?? "");
 
   const entry: ManifestEntry = {
@@ -280,7 +288,7 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
     title: scenario.title,
     description: scenario.description,
     ...(scenario.steps ? { steps: scenario.steps } : {}),
-    width: config.deliverables.width,
+    width,
     height,
     durationMs,
     recordedAt: new Date().toISOString(),
@@ -299,6 +307,7 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
     id: scenario.id,
     mode,
     durationMs,
+    scaledPauseMs: director.scaledPauseMs,
     pace,
     viewport,
     steps: scenario.steps ?? [],

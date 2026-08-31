@@ -5,6 +5,7 @@ import { ScreencastError } from "../errors.js";
 import { parseFlags, type FlagSpecs } from "../flags.js";
 import type { AxiStructuredOutput } from "../output.js";
 import { ScenarioFailure, runScenario, type RunMode, type RunResult } from "../run.js";
+import { parseDuration, solvePace, type PaceSolution } from "../duration.js";
 import { detectToolchain } from "../toolchain.js";
 import type { DefinedScenario } from "../types.js";
 
@@ -17,12 +18,18 @@ const SHARED: FlagSpecs = {
   },
   pace: { kind: "number", description: "Speed multiplier; lower is faster" },
   device: { kind: "string", description: "Playwright device preset", placeholder: "name" },
+  viewport: { kind: "string", description: "Explicit size, e.g. 390x844", placeholder: "WxH" },
   orientation: { kind: "string", description: "portrait or landscape", placeholder: "o" },
   headed: { kind: "boolean", description: "Show the browser while it runs" },
 };
 
 export const RECORD_FLAGS: FlagSpecs = {
   ...SHARED,
+  duration: {
+    kind: "string",
+    description: "Aim for this length, e.g. 30s (measures first, then solves for pace)",
+    placeholder: "30s",
+  },
   out: { kind: "string", description: "Output directory", placeholder: "dir" },
   all: { kind: "boolean", description: "Record every scenario the config lists" },
   "keep-raw": { kind: "boolean", description: "Keep the raw capture for inspection" },
@@ -80,6 +87,18 @@ async function select(
   return chosen;
 }
 
+function viewportOf(value: unknown): { width: number; height: number } | undefined {
+  if (value === undefined) return undefined;
+  const match = /^(\d+)\s*[x×]\s*(\d+)$/.exec(String(value).trim());
+  if (!match) {
+    throw new ScreencastError(`--viewport must look like 1280x800`, "VALIDATION_ERROR", [
+      "Example: --viewport 390x844",
+      'Or use a device preset: --device "iPhone 13"',
+    ]);
+  }
+  return { width: Number(match[1]), height: Number(match[2]) };
+}
+
 function orientationOf(value: unknown): "portrait" | "landscape" | undefined {
   if (value === undefined) return undefined;
   if (value !== "portrait" && value !== "landscape") {
@@ -90,7 +109,7 @@ function orientationOf(value: unknown): "portrait" | "landscape" | undefined {
   return value;
 }
 
-function describe(result: RunResult): AxiStructuredOutput {
+function describe(result: RunResult, solution?: PaceSolution): AxiStructuredOutput {
   const files = result.encoded
     ? Object.entries(result.encoded.sizes).map(([name, bytes]) => ({
         file: name,
@@ -102,6 +121,13 @@ function describe(result: RunResult): AxiStructuredOutput {
     duration_s: Number((result.durationMs / 1000).toFixed(1)),
     pace: result.pace,
     viewport: `${result.viewport.viewport.width}x${result.viewport.viewport.height}`,
+    ...(solution
+      ? {
+          target_s: Number((solution.targetMs / 1000).toFixed(1)),
+          natural_s: Number((solution.naturalMs / 1000).toFixed(1)),
+          ...(solution.warning ? { warning: solution.warning } : {}),
+        }
+      : {}),
     ...(result.viewport.device ? { device: result.viewport.device } : {}),
     ...(files.length > 0 ? { files } : {}),
     ...(result.steps.length > 0 ? { steps: result.steps } : {}),
@@ -134,32 +160,53 @@ export async function recordCommand(args: string[], mode: RunMode): Promise<AxiS
   const toolchain = mode === "record" ? await detectToolchain() : undefined;
 
   const orientation = orientationOf(flags["orientation"]);
+  const viewport = viewportOf(flags["viewport"]);
+  const targetMs =
+    flags["duration"] !== undefined ? parseDuration(flags["duration"] as string) : null;
 
   const results: RunResult[] = [];
+  const solutions = new Map<string, PaceSolution>();
   for (const { scenario, file } of selected) {
     const sourceText = await readFile(file, "utf8").catch(() => undefined);
-    results.push(
-      await runScenario({
-        scenario,
-        config,
-        mode,
-        ...(sourceText ? { sourceText } : {}),
-        ...(flags["base-url"] ? { baseUrl: flags["base-url"] as string } : {}),
-        ...(flags["out"] ? { outDir: resolve(process.cwd(), flags["out"] as string) } : {}),
-        ...(flags["pace"] !== undefined ? { pace: flags["pace"] as number } : {}),
-        ...(flags["device"] ? { device: flags["device"] as string } : {}),
-        ...(orientation ? { orientation } : {}),
-        ...(flags["headed"] === true ? { headed: true } : {}),
-        ...(flags["keep-raw"] === true ? { keepRaw: true } : {}),
-        ...(toolchain ? { toolchain } : {}),
-        // stderr: stdout stays reserved for the final payload.
-        log: (message) => process.stderr.write(`${message}\n`),
-      }),
-    );
+
+    // Everything except the mode and the pace, which the measuring pass and
+    // the real take each set for themselves.
+    const base = {
+      scenario,
+      config,
+      ...(sourceText ? { sourceText } : {}),
+      ...(flags["base-url"] ? { baseUrl: flags["base-url"] as string } : {}),
+      ...(flags["out"] ? { outDir: resolve(process.cwd(), flags["out"] as string) } : {}),
+      ...(flags["device"] ? { device: flags["device"] as string } : {}),
+      ...(orientation ? { orientation } : {}),
+      ...(flags["headed"] === true ? { headed: true } : {}),
+      ...(flags["keep-raw"] === true ? { keepRaw: true } : {}),
+      ...(viewport ? { viewport } : {}),
+      ...(toolchain ? { toolchain } : {}),
+      // stderr: stdout stays reserved for the final payload.
+      log: (message: string) => void process.stderr.write(`${message}\n`),
+    };
+
+    let pace = flags["pace"] as number | undefined;
+
+    if (targetMs !== null) {
+      // Measured, not assumed: a scenario's length is only roughly linear in
+      // pace, because the app's own waits do not scale with it. One no-encode
+      // pass is the cheapest honest way to learn the natural length.
+      process.stderr.write(`${scenario.id}: measuring for a ${targetMs / 1000}s target\n`);
+      const probe = await runScenario({ ...base, mode: "rehearse", pace: 1 });
+      const solution = solvePace(probe.durationMs, targetMs, probe.scaledPauseMs);
+      solutions.set(scenario.id, solution);
+      pace = solution.pace;
+      if (solution.warning) process.stderr.write(`${scenario.id}: ${solution.warning}\n`);
+    }
+
+    results.push(await runScenario({ ...base, mode, ...(pace !== undefined ? { pace } : {}) }));
   }
 
   if (results.length === 1) {
-    return { ...describe(results[0] as RunResult), help: nextSteps(results[0] as RunResult) };
+    const only = results[0] as RunResult;
+    return { ...describe(only, solutions.get(only.id)), help: nextSteps(only) };
   }
 
   return {
