@@ -1,4 +1,5 @@
-import { runAxiCli } from "axi-sdk-js";
+import { AxiError, runAxiCli } from "axi-sdk-js";
+import { isScreencastError } from "./errors.js";
 import { VERSION } from "./version.js";
 import { homeView } from "./commands/home.js";
 import { guideCommand, guideHelp } from "./commands/guide.js";
@@ -26,6 +27,26 @@ const COMMAND_HELP: Record<string, string> = {
   guide: guideHelp(),
 };
 
+/**
+ * The one place the SDK's error type is constructed.
+ *
+ * Everything below the CLI throws `ScreencastError`, so the library half of
+ * this package stays free of an ESM-only dependency that a CJS resolver
+ * cannot follow. Converting here keeps the wire format identical.
+ */
+function toAxi<T>(handler: (args: string[]) => T): (args: string[]) => T {
+  return (args) => {
+    try {
+      return handler(args);
+    } catch (error) {
+      if (isScreencastError(error)) {
+        throw new AxiError(error.message, error.code, error.suggestions);
+      }
+      throw error;
+    }
+  };
+}
+
 export async function main(argv?: string[]): Promise<void> {
   await runAxiCli({
     description: DESCRIPTION,
@@ -34,7 +55,7 @@ export async function main(argv?: string[]): Promise<void> {
     ...(argv ? { argv } : {}),
     home: () => homeView(),
     commands: {
-      guide: (args) => guideCommand(args),
+      guide: toAxi((args) => guideCommand(args)),
     },
     getCommandHelp: (command) => COMMAND_HELP[command],
   });

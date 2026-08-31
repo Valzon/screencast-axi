@@ -1,4 +1,4 @@
-import { AxiError } from "axi-sdk-js";
+import { ScreencastError } from "../errors.js";
 import { parseFlags } from "../flags.js";
 import type { AxiStructuredOutput } from "../output.js";
 
@@ -32,10 +32,25 @@ const TOPICS: Record<string, Topic> = {
     ],
   },
   encoding: {
-    summary: "What the recorder produces, and what it needs installed",
+    summary: "Output formats, why not GIF, and what has to be installed",
     body: [
       "Every take produces an mp4 (h264, faststart), a webm (VP9) and a poster",
-      "image. GIF is opt-in - a 12-second clip is roughly ten times the mp4.",
+      "image. GIF is opt-in and is an export, not a storage format.",
+      "",
+      "Measured on a real 16.7s app screencast, all at 800px wide and 15fps:",
+      "  mp4 (h264)              182 KB",
+      "  animated WebP (q55)     944 KB   5.2x",
+      "  animated WebP (q70)   1,875 KB  10.3x",
+      "  GIF (192 colours)     2,034 KB  11.2x",
+      "The source mp4 at full 1280px and 30fps is 471 KB - still 4.3x smaller",
+      "than the GIF at half the resolution and half the frame rate.",
+      "",
+      "Quality is not the deciding factor for flat app UI: 192 colours plus",
+      "dithering keeps small text legible. Size and capability are. A GIF has",
+      "no controls, no seeking, no poster frame, cannot be paused, and ignores",
+      "prefers-reduced-motion. Reach for it only where video does not render -",
+      "an npm README, an email - and prefer <video autoplay muted loop",
+      "playsinline> everywhere else.",
       "",
       "ffmpeg is required and is not bundled: it is 80MB+ per platform, and",
       "which build you have matters. Many builds - Homebrew's among them - ship",
@@ -47,6 +62,7 @@ const TOPICS: Record<string, Topic> = {
       "install ffmpeg system-wide), then PATH.",
     ],
   },
+
   overlay: {
     summary: "The synthetic cursor, captions and drag ghost, and how to theme them",
     body: [
@@ -75,7 +91,7 @@ export function guideCommand(args: string[]): AxiStructuredOutput {
   const [topic, ...rest] = positionals;
 
   if (rest.length > 0) {
-    throw new AxiError(`Unexpected argument: ${rest[0]}`, "VALIDATION_ERROR", [
+    throw new ScreencastError(`Unexpected argument: ${rest[0]}`, "VALIDATION_ERROR", [
       "Run `screencast-axi guide <topic>` with a single topic",
       "Run `screencast-axi guide` to list the topics",
     ]);
@@ -90,7 +106,7 @@ export function guideCommand(args: string[]): AxiStructuredOutput {
 
   const found = TOPICS[topic];
   if (!found) {
-    throw new AxiError(`Unknown guide topic: ${topic}`, "VALIDATION_ERROR", [
+    throw new ScreencastError(`Unknown guide topic: ${topic}`, "VALIDATION_ERROR", [
       `Available topics: ${Object.keys(TOPICS).join(", ")}`,
       "Run `screencast-axi guide` to list them with summaries",
     ]);

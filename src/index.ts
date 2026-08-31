@@ -39,3 +39,12 @@ export {
   type PosterEncoder,
   type Toolchain,
 } from "./toolchain.js";
+export {
+  defineConfig,
+  loadConfig,
+  loadScenarios,
+  type BrowserConfig,
+  type ResolvedConfig,
+  type ScreencastConfig,
+} from "./config.js";
+export { clipFilesFor, readManifest, type ClipFiles, type ManifestEntry } from "./manifest.js";

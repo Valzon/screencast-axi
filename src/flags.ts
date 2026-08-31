@@ -1,4 +1,4 @@
-import { AxiError } from "axi-sdk-js";
+import { ScreencastError } from "./errors.js";
 
 /**
  * Spec-driven flag parsing.
@@ -80,13 +80,13 @@ function unknownFlag(name: string, specs: FlagSpecs): never {
     ...(near ? [`Did you mean \`--${near}\`?`] : []),
     ...(known.length > 0 ? [usage(specs)] : ["This command accepts no flags"]),
   ];
-  throw new AxiError(`Unknown flag: --${name}`, "VALIDATION_ERROR", help);
+  throw new ScreencastError(`Unknown flag: --${name}`, "VALIDATION_ERROR", help);
 }
 
 function numeric(name: string, raw: string): number {
   const value = Number(raw);
   if (!Number.isFinite(value)) {
-    throw new AxiError(`--${name} expects a number, got \`${raw}\``, "VALIDATION_ERROR", [
+    throw new ScreencastError(`--${name} expects a number, got \`${raw}\``, "VALIDATION_ERROR", [
       `Example: --${name} 30`,
     ]);
   }
@@ -132,7 +132,7 @@ export function parseFlags(args: readonly string[], specs: FlagSpecs): ParsedArg
 
     if (spec.kind === "boolean") {
       if (inlineValue !== null && inlineValue !== "true" && inlineValue !== "false") {
-        throw new AxiError(`--${name} is a switch and takes no value`, "VALIDATION_ERROR", [
+        throw new ScreencastError(`--${name} is a switch and takes no value`, "VALIDATION_ERROR", [
           `Pass \`--${name}\` on its own, or \`--no-${name}\` to turn it off`,
         ]);
       }
@@ -142,7 +142,7 @@ export function parseFlags(args: readonly string[], specs: FlagSpecs): ParsedArg
 
     const raw = inlineValue ?? args[++i];
     if (raw === undefined) {
-      throw new AxiError(`--${name} expects a value`, "VALIDATION_ERROR", [
+      throw new ScreencastError(`--${name} expects a value`, "VALIDATION_ERROR", [
         `Pass it as \`--${name} <${spec.placeholder ?? "value"}>\``,
       ]);
     }

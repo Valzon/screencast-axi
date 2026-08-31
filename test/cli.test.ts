@@ -103,6 +103,22 @@ describe("guide", () => {
   });
 });
 
+/**
+ * The library half of this package must not depend on axi-sdk-js: it is
+ * ESM-only with an import-only export map, so a CJS resolver - which is how a
+ * TypeScript config file is loaded, and how a bundler may resolve a website's
+ * build-time import - cannot follow it. The SDK stays behind the CLI, and
+ * errors are converted at that boundary.
+ */
+describe("error boundary", () => {
+  it("renders a library error through the SDK's structured format", async () => {
+    const { text, exitCode } = await run(["guide", "--nope"]);
+    expect(exitCode).toBe(2);
+    expect(text).toContain("code: VALIDATION_ERROR");
+    expect(text).toContain("Unknown flag: --nope");
+  });
+});
+
 describe("skill", () => {
   it("stays under the stub cap", () => {
     expect(createSkillMarkdown().length).toBeLessThanOrEqual(MAX_SKILL_MARKDOWN_CHARS);

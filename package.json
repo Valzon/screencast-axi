@@ -29,16 +29,17 @@
   "exports": {
     ".": {
       "types": "./dist/src/index.d.ts",
-      "import": "./dist/src/index.js"
+      "default": "./dist/src/index.js"
     },
     "./config": {
       "types": "./dist/src/config.d.ts",
-      "import": "./dist/src/config.js"
+      "default": "./dist/src/config.js"
     },
     "./manifest": {
       "types": "./dist/src/manifest.d.ts",
-      "import": "./dist/src/manifest.js"
-    }
+      "default": "./dist/src/manifest.js"
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",

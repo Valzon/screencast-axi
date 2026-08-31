@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AxiError } from "axi-sdk-js";
+import { ScreencastError } from "../src/errors.js";
 import { nearestFlag, parseFlags, renderFlagHelp, type FlagSpecs } from "../src/flags.js";
 
 const SPECS: FlagSpecs = {
@@ -11,11 +11,11 @@ const SPECS: FlagSpecs = {
   tag: { kind: "string", description: "Filter by tag", repeat: true },
 };
 
-function error(args: string[]): AxiError {
+function error(args: string[]): ScreencastError {
   try {
     parseFlags(args, SPECS);
   } catch (e) {
-    return e as AxiError;
+    return e as ScreencastError;
   }
   throw new Error("expected parseFlags to throw");
 }
@@ -61,7 +61,7 @@ describe("parsing", () => {
 describe("rejecting bad input", () => {
   it("rejects an unknown flag as a usage error", () => {
     const e = error(["--quality", "high"]);
-    expect(e).toBeInstanceOf(AxiError);
+    expect(e).toBeInstanceOf(ScreencastError);
     expect(e.code).toBe("VALIDATION_ERROR");
     expect(e.message).toBe("Unknown flag: --quality");
   });
