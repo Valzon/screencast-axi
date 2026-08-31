@@ -43,7 +43,12 @@ export interface ScreencastConfig {
   readonly deliverables?: Partial<EncodeSettings>;
   readonly browser?: Partial<BrowserConfig>;
   readonly overlay?: DeepPartial<OverlayTheme>;
-  readonly timeouts?: { readonly setupMs?: number; readonly runMs?: number };
+  readonly timeouts?: {
+    readonly setupMs?: number;
+    readonly runMs?: number;
+    /** Per-action timeout during a rehearsal. Deliberately short. */
+    readonly rehearseMs?: number;
+  };
 }
 
 export interface ResolvedConfig {
@@ -61,7 +66,11 @@ export interface ResolvedConfig {
   readonly deliverables: EncodeSettings;
   readonly browser: BrowserConfig;
   readonly overlay: DeepPartial<OverlayTheme>;
-  readonly timeouts: { readonly setupMs: number; readonly runMs: number };
+  readonly timeouts: {
+    readonly setupMs: number;
+    readonly runMs: number;
+    readonly rehearseMs: number;
+  };
 }
 
 export const CONFIG_BASENAMES = [
@@ -199,6 +208,7 @@ export function resolveConfig(
     timeouts: {
       setupMs: raw.timeouts?.setupMs ?? 120_000,
       runMs: raw.timeouts?.runMs ?? 300_000,
+      rehearseMs: raw.timeouts?.rehearseMs ?? 8_000,
     },
   };
 }
