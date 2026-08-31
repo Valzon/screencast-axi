@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>What it did</title>
+    <link rel="stylesheet" href="shell.css" />
+    <style>
+      .window {
+        width: 760px;
+      }
+      body {
+        align-items: flex-start;
+        padding-top: 22px;
+      }
+      .body {
+        padding: 16px 20px 18px;
+      }
+      .step {
+        display: flex;
+        gap: 10px;
+        align-items: baseline;
+        margin-bottom: 2px;
+        font-size: 16px;
+      }
+      .step .tick {
+        color: var(--ok);
+        flex: none;
+        width: 1em;
+      }
+      .step .what {
+        color: var(--ink);
+      }
+      .step .note {
+        color: var(--muted);
+      }
+
+      .file {
+        margin-top: 18px;
+        border: 1px solid var(--rule);
+        border-radius: 8px;
+        background: #16171f;
+        overflow: hidden;
+      }
+      .file .name {
+        padding: 8px 14px;
+        border-bottom: 1px solid var(--rule);
+        color: var(--muted);
+        font-size: 13.5px;
+      }
+      pre {
+        margin: 0;
+        padding: 12px 16px;
+        font: inherit;
+        font-size: 14px;
+        line-height: 1.5;
+        color: #c9cddb;
+        white-space: pre;
+        overflow: hidden;
+      }
+      .k {
+        color: #ff9492;
+      }
+      .s {
+        color: #a5d6ff;
+      }
+      .f {
+        color: #d2a8ff;
+      }
+      .c {
+        color: #6e7587;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="window">
+      <div class="titlebar">
+        <i class="dot"></i><i class="dot"></i><i class="dot"></i>
+        <span>screencast-axi</span>
+      </div>
+      <div class="body">
+        <div class="step">
+          <span class="tick">&check;</span><span class="what">scaffold</span
+          ><span class="note">wrote scenarios/demo.ts</span>
+        </div>
+        <div class="step">
+          <span class="tick">&check;</span><span class="what">rehearse</span
+          ><span class="note">selectors hold, 14 actions</span>
+        </div>
+        <div class="step">
+          <span class="tick">&check;</span><span class="what">record</span
+          ><span class="note">mp4, webm, gif and webp</span>
+        </div>
+
+        <div class="file">
+          <div class="name">scenarios/demo.ts</div>
+          <pre><span class="k">export default</span> <span class="f">defineScenario</span>({
+  steps: [<span class="s">"Your scenario drives the real app"</span>, <span class="s">"..."</span>],
+  <span class="k">async</span> <span class="f">run</span>(d) {
+    <span class="k">await</span> d.<span class="f">step</span>(<span class="s">0</span>, <span class="s">900</span>);
+    <span class="k">await</span> d.<span class="f">type</span>(<span class="s">".new-todo"</span>, <span class="s">"Ship the demo"</span>);
+  },
+});</pre>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

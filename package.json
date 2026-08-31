@@ -60,7 +60,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepublishOnly": "pnpm run build",
-    "demo": "node dist/bin/screencast-axi.js record demo --gif --webp --duration 9s --config demo/screencast.config.ts"
+    "demo": "node dist/bin/screencast-axi.js record demo --gif --webp --config demo/screencast.config.ts"
   },
   "license": "MIT",
   "engines": {

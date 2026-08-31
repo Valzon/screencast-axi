@@ -1,18 +1,20 @@
 [
   {
     "id": "demo",
-    "title": "A scripted workflow, recorded",
-    "description": "Adding and completing a task in a real app, with a drawn cursor and captions.",
+    "title": "From a sentence to a screencast",
+    "description": "Asking for a clip, the scenario that gets written, and the recording it produces - itself recorded by screencast-axi.",
     "steps": [
-      "Your scenario drives the real app",
+      "Ask for the clip you want",
+      "It writes a scenario and rehearses it",
+      "Then it drives the real app",
       "Typed the way a person types it",
-      "And the app responds on camera"
+      "And the app answers, on camera"
     ],
     "width": 880,
     "height": 520,
-    "durationMs": 8761,
-    "recordedAt": "2026-08-31T20:52:38.384Z",
-    "pace": 0.781,
+    "durationMs": 18274,
+    "recordedAt": "2026-08-31T21:05:56.871Z",
+    "pace": 1,
     "formats": [
       "mp4",
       "webm",
@@ -20,8 +22,8 @@
       "gif",
       "webp"
     ],
-    "sourceHash": "fd959516bafbcc0e",
-    "stepsHash": "8d2482e9786cedc7",
+    "sourceHash": "f6416da477d389b1",
+    "stepsHash": "b00f25fa50644bd0",
     "recorderVersion": "0.0.0"
   }
 ]

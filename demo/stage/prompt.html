@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>The ask</title>
+    <link rel="stylesheet" href="shell.css" />
+    <style>
+      #prompt {
+        flex: 1;
+        background: transparent;
+        border: 0;
+        outline: 0;
+        color: var(--ink);
+        font: inherit;
+        resize: none;
+        overflow: hidden;
+        height: 3.2em;
+        padding: 0;
+        caret-color: var(--accent);
+      }
+      .working {
+        margin-top: 16px;
+        color: var(--muted);
+        opacity: 0;
+        transition: opacity 220ms ease;
+      }
+      .working.on {
+        opacity: 1;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="window">
+      <div class="titlebar">
+        <i class="dot"></i><i class="dot"></i><i class="dot"></i>
+        <span>~/my-app</span>
+      </div>
+      <div class="body">
+        <div class="line dim" style="margin-bottom: 14px"><span class="sigil">$</span> claude</div>
+        <div class="line">
+          <span class="sigil">&gt;</span>
+          <textarea id="prompt" spellcheck="false" aria-label="Prompt"></textarea>
+        </div>
+        <div class="working" id="working">Working<span id="dots"></span></div>
+      </div>
+    </div>
+    <script>
+      // Enter submits rather than adding a line, so the take can show the
+      // handover from asking to working without a second page.
+      const field = document.getElementById("prompt");
+      const working = document.getElementById("working");
+      const dots = document.getElementById("dots");
+      field.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter") return;
+        event.preventDefault();
+        working.classList.add("on");
+        let n = 0;
+        setInterval(() => {
+          n = (n + 1) % 4;
+          dots.textContent = ".".repeat(n);
+        }, 320);
+      });
+    </script>
+  </body>
+</html>

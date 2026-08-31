@@ -6,11 +6,11 @@ conventions, so an agent can drive it as comfortably as a person can.
 
 <picture>
   <source srcset="https://raw.githubusercontent.com/Valzon/screencast-axi/main/docs/demo.anim.webp" type="image/webp">
-  <img src="https://raw.githubusercontent.com/Valzon/screencast-axi/main/docs/demo.gif" alt="A scripted workflow being recorded: a cursor moves to a text field, types a task, and the app responds." width="640">
+  <img src="https://raw.githubusercontent.com/Valzon/screencast-axi/main/docs/demo.gif" alt="Three acts: a prompt asking for a clip, the scenario that gets written, and the recording it produces in a real app." width="640">
 </picture>
 
-<sup>Recorded by this tool, from [`demo/scenarios/demo.ts`](demo/scenarios/demo.ts). Re-record it
-with `pnpm demo`.</sup>
+<sup>The ask, the scenario that came back, and the take it produced - itself recorded by this tool,
+from [`demo/scenarios/demo.ts`](demo/scenarios/demo.ts). Re-record it with `pnpm demo`.</sup>
 
 > **Status: 0.x and not yet published.** The recorder works end to end; the command surface is
 > still growing. See [Roadmap](#roadmap).

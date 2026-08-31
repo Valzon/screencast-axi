@@ -1,0 +1,85 @@
+/* Shared look for the two title cards that open the demo.
+   A plain terminal, deliberately not a mock of any product's UI: the point is
+   to show the workflow, not to imitate a screenshot of something. */
+* {
+  box-sizing: border-box;
+}
+
+:root {
+  --bg: #14151c;
+  --surface: #1b1d27;
+  --rule: #2a2d3a;
+  --ink: #e4e6ee;
+  --muted: #8a90a6;
+  --accent: #ffa657;
+  --ok: #7ee787;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 17px;
+  line-height: 1.6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-font-smoothing: antialiased;
+}
+
+.window {
+  width: 720px;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+.titlebar {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--rule);
+  background: #191b24;
+}
+.dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #3a3e4d;
+}
+.titlebar span {
+  margin-left: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
+
+.body {
+  padding: 20px 22px 24px;
+}
+
+.line {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+.sigil {
+  color: var(--accent);
+  flex: none;
+}
+.dim {
+  color: var(--muted);
+}
+.ok {
+  color: var(--ok);
+}

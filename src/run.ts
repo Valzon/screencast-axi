@@ -395,7 +395,10 @@ function hostsVisited(actions: readonly DirectorAction[]): string[] {
   for (const action of actions) {
     if (action.kind !== "goto" || !action.target) continue;
     try {
-      const host = new URL(action.target).host;
+      const url = new URL(action.target);
+      // A file:// URL has no host, and a blank entry answers nothing. Name the
+      // scheme instead, which is the fact that matters: it stayed local.
+      const host = url.host || `${url.protocol}//`;
       if (!hosts.includes(host)) hosts.push(host);
     } catch {
       // Not an absolute URL; the goto resolved it against baseUrl already.
