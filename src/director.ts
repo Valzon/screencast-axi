@@ -25,6 +25,18 @@ export interface DirectorOptions {
   readonly settleMs?: number;
 }
 
+/** One thing the scenario did, for the run to report afterwards. */
+export interface DirectorAction {
+  /** Milliseconds since the Director was created. */
+  readonly atMs: number;
+  readonly kind:
+    "goto" | "click" | "doubleClick" | "type" | "press" | "drag" | "scroll" | "waitFor" | "step";
+  /** What it acted on, as written in the scenario. */
+  readonly target?: string;
+  /** Typed text, a key, a distance - whatever makes the line readable. */
+  readonly detail?: string;
+}
+
 /** Default ceiling on the post-navigation settle wait. */
 export const DEFAULT_SETTLE_MS = 2500;
 
@@ -75,6 +87,15 @@ export class Director {
    * pace exactly rather than assuming the whole clip scales.
    */
   private pausedMs = 0;
+  /**
+   * Everything the scenario did, in order.
+   *
+   * A scenario is arbitrary code driving a real browser, often a signed-in
+   * one, so "what will this actually do" is a fair question to want answered
+   * before trusting it. Watching a headed run answers it once; this answers it
+   * in a form that can be read, diffed and kept.
+   */
+  private readonly actions: DirectorAction[] = [];
 
   constructor(
     readonly page: Page,
@@ -109,6 +130,20 @@ export class Director {
     return this.pausedMs;
   }
 
+  /** Everything the scenario did, in order. */
+  get performed(): readonly DirectorAction[] {
+    return this.actions;
+  }
+
+  private record(kind: DirectorAction["kind"], target?: Target | string, detail?: string): void {
+    this.actions.push({
+      atMs: Date.now() - this.contextCreatedAt,
+      kind,
+      ...(target !== undefined ? { target: describeTarget(target) } : {}),
+      ...(detail !== undefined ? { detail } : {}),
+    });
+  }
+
   /** A deliberate pause so the viewer can read what just happened. */
   async beat(ms = 700): Promise<void> {
     await this.pause(ms);
@@ -116,6 +151,7 @@ export class Director {
 
   async goto(path: string): Promise<void> {
     const url = path.startsWith("http") ? path : new URL(path, this.opts.baseUrl).toString();
+    this.record("goto", url);
     await this.page.goto(url, { waitUntil: "domcontentloaded" });
     // Bounded on purpose: see `settleMs`. A page that has not gone quiet in a
     // couple of seconds is not going to, and every extra second is recorded.
@@ -147,6 +183,7 @@ export class Director {
       );
     }
     this.shown.push(index);
+    this.record("step", undefined, line);
     await this.caption(line, holdMs);
   }
 
@@ -196,6 +233,18 @@ export class Director {
 
   /** Move, settle, then click - the pause is what makes the click legible. */
   async click(target: Target, { settleMs = 260 }: { settleMs?: number } = {}): Promise<void> {
+    this.record("click", target);
+    await this.performClick(target, settleMs);
+  }
+
+  /**
+   * The click itself, without logging it.
+   *
+   * `type` focuses its field by clicking it, which is one action from the
+   * scenario's point of view. Logging the inner click too would put a
+   * phantom step in the record of what the take did.
+   */
+  private async performClick(target: Target, settleMs: number): Promise<void> {
     await this.moveTo(target);
     await this.beat(settleMs);
     await this.page.mouse.down();
@@ -205,6 +254,7 @@ export class Director {
   }
 
   async doubleClick(target: Target): Promise<void> {
+    this.record("doubleClick", target);
     await this.moveTo(target);
     await this.beat(220);
     await this.page.mouse.dblclick(this.pointer.x, this.pointer.y);
@@ -221,7 +271,8 @@ export class Director {
     text: string,
     { delay = 55, clear = false }: { delay?: number; clear?: boolean } = {},
   ): Promise<void> {
-    await this.click(target, { settleMs: 180 });
+    this.record("type", target, text);
+    await this.performClick(target, 180);
     if (clear) {
       await this.page.keyboard.press("ControlOrMeta+A");
       await this.beat(160);
@@ -233,6 +284,7 @@ export class Director {
   }
 
   async press(key: string): Promise<void> {
+    this.record("press", undefined, key);
     await this.page.keyboard.press(key);
     await this.beat(400);
   }
@@ -251,6 +303,7 @@ export class Director {
       dropMs = 420,
     }: { steps?: number; liftMs?: number; dropMs?: number } = {},
   ): Promise<void> {
+    this.record("drag", from, `to ${describeTarget(to)}`);
     await this.moveTo(from);
     await this.beat(260);
     await this.page.mouse.down();
@@ -303,6 +356,7 @@ export class Director {
       dropMs = 460,
     }: { steps?: number; liftMs?: number; dropMs?: number } = {},
   ): Promise<void> {
+    this.record("drag", from, `to ${describeTarget(to)} (html5)`);
     const source = this.locator(from);
     await this.moveTo(from);
     await this.beat(260);
@@ -389,6 +443,7 @@ export class Director {
 
   /** Smooth wheel scroll, in the page or in whatever is under the pointer. */
   async scrollBy(deltaY: number, { steps = 24 }: { steps?: number } = {}): Promise<void> {
+    this.record("scroll", undefined, `${Math.round(deltaY)}px`);
     const per = deltaY / steps;
     for (let i = 0; i < steps; i++) {
       await this.page.mouse.wheel(0, per);
@@ -398,6 +453,7 @@ export class Director {
   }
 
   async waitFor(target: Target): Promise<void> {
+    this.record("waitFor", target);
     await this.locator(target).waitFor({ state: "visible" });
   }
 
@@ -437,4 +493,15 @@ export class Director {
       }
     }
   }
+}
+
+/** A target as a short readable string, for the action log. */
+function describeTarget(target: Target | string): string {
+  if (typeof target === "string") return target;
+  if ("x" in target) return `(${Math.round(target.x)}, ${Math.round(target.y)})`;
+  // Playwright locators stringify to something like `locator('.foo')`.
+  return String(target)
+    .replace(/^locator\(/, "")
+    .replace(/\)$/, "")
+    .replace(/^['"]|['"]$/g, "");
 }

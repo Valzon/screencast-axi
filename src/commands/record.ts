@@ -20,7 +20,7 @@ const SHARED: FlagSpecs = {
   device: { kind: "string", description: "Playwright device preset", placeholder: "name" },
   viewport: { kind: "string", description: "Explicit size, e.g. 390x844", placeholder: "WxH" },
   orientation: { kind: "string", description: "portrait or landscape", placeholder: "o" },
-  headed: { kind: "boolean", description: "Show the browser while it runs" },
+  headed: { kind: "boolean", description: "Watch it happen in a real browser window" },
   auth: { kind: "string", description: "Named auth strategy from the config", placeholder: "name" },
   "no-auth": { kind: "boolean", description: "Record signed out" },
 };
@@ -34,6 +34,7 @@ export const RECORD_FLAGS: FlagSpecs = {
   },
   out: { kind: "string", description: "Output directory", placeholder: "dir" },
   all: { kind: "boolean", description: "Record every scenario the config lists" },
+  full: { kind: "boolean", description: "Include the full action log" },
   "keep-raw": { kind: "boolean", description: "Keep the raw capture for inspection" },
 };
 
@@ -109,6 +110,26 @@ function orientationOf(value: unknown): "portrait" | "landscape" | undefined {
     ]);
   }
   return value;
+}
+
+/**
+ * The action log, trimmed for reading.
+ *
+ * Full detail is behind `--full`: a long tour is dozens of lines, and the
+ * point of the short form is that someone can scan it.
+ */
+function performed(result: RunResult, full: boolean): AxiStructuredOutput[] {
+  const rows = result.performed.map((a) => ({
+    at_s: Number((a.atMs / 1000).toFixed(1)),
+    did: a.kind,
+    ...(a.target ? { target: truncate(a.target, full) } : {}),
+    ...(a.detail ? { detail: truncate(a.detail, full) } : {}),
+  }));
+  return full ? rows : rows.slice(0, 24);
+}
+
+function truncate(text: string, full: boolean): string {
+  return full || text.length <= 70 ? text : `${text.slice(0, 67)}...`;
 }
 
 function describe(result: RunResult, solution?: PaceSolution): AxiStructuredOutput {
@@ -214,7 +235,16 @@ export async function recordCommand(args: string[], mode: RunMode): Promise<AxiS
 
   if (results.length === 1) {
     const only = results[0] as RunResult;
-    return { ...describe(only, solutions.get(only.id)), help: nextSteps(only) };
+    const full = flags["full"] === true;
+    // A rehearsal is where someone checks what a scenario does before trusting
+    // it, so the log is the point of the output rather than an extra.
+    const showLog = mode === "rehearse" || full;
+    return {
+      ...describe(only, solutions.get(only.id)),
+      ...(only.hosts.length > 0 ? { hosts: only.hosts } : {}),
+      ...(showLog ? { performed: performed(only, full) } : {}),
+      help: nextSteps(only, showLog),
+    };
   }
 
   return {
@@ -227,14 +257,20 @@ export async function recordCommand(args: string[], mode: RunMode): Promise<AxiS
   };
 }
 
-function nextSteps(result: RunResult): string[] {
+function nextSteps(result: RunResult, showedLog = false): string[] {
   if (result.mode === "rehearse") {
     return [
+      ...(showedLog
+        ? [
+            "`performed` above is every action the scenario took - read it before trusting a script you did not write",
+          ]
+        : []),
       `Selectors and narration hold. Run \`screencast-axi record ${result.id}\` for the real take`,
       "A rehearsal runs faster than a take, so it can trip on an animation a recording would wait out",
     ];
   }
   return [
+    ...(showedLog ? [] : ["Add `--full` to see every action the scenario took"]),
     `The clip is ${(result.durationMs / 1000).toFixed(1)}s. Re-cut it with \`screencast-axi record ${result.id} --pace 0.8\` (lower is faster)`,
     result.manifestPath
       ? `Title, description and steps are in ${relative(process.cwd(), result.manifestPath)} for a site to read`

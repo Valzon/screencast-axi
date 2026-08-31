@@ -31,19 +31,18 @@ installed copies go stale. Get the current source of truth from the CLI:
 - `npx -y screencast-axi guide` for topic-sized guidance, pulled one topic at
   a time rather than read as a manual
 
-Two things worth knowing before the first run:
+Three things worth knowing before the first run:
 
-1. Iterate with `rehearse`, not `record`. It runs the scenario without
-   encoding, so a stale selector surfaces in seconds instead of a minute, and
-   the failure comes back with a screenshot and what each part of the selector
-   actually matched.
-2. When a selector needs discovering, drive the page live with a browser tool
+1. Iterate with `rehearse`, not `record`: no encoding, so a stale selector
+   surfaces in seconds, and it prints every action the scenario took.
+2. `--headed` shows it happening in a real window. Offer it when someone
+   wants to see what a script does to their signed-in account before it runs.
+3. When a selector needs discovering, drive the page live with a browser tool
    such as `chrome-devtools-axi`, then write the scenario.
 
-ffmpeg must be installed. For a page behind a login, read
-`guide auth`: signing in is a one-time human step (`auth login`), and the
-CLI refuses rather than prompting when no person is present - relay that
-command to the user instead of trying to sign in yourself.
+ffmpeg must be installed. Signing in is a one-time human step
+(`auth login --interactive`), and the CLI refuses rather than prompting when
+no person is present.
 
 You do not need screencast-axi installed globally - invoke it with
 `npx -y screencast-axi <command>`. If its output suggests a follow-up command

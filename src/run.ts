@@ -2,7 +2,7 @@ import { rm } from "node:fs/promises";
 import { captureSize, openContext, resolveViewport, type ResolvedViewport } from "./browser.js";
 import { selectStrategy, type ResolvedConfig } from "./config.js";
 import type { AuthContext, AuthIdentity } from "./auth/types.js";
-import { Director } from "./director.js";
+import { Director, type DirectorAction } from "./director.js";
 import { encode, type EncodeResult } from "./encode.js";
 import { ScreencastError } from "./errors.js";
 import { captureFailure, type Forensics } from "./forensics.js";
@@ -44,6 +44,10 @@ export interface RunResult {
   readonly pace: number;
   readonly viewport: ResolvedViewport;
   readonly steps: readonly string[];
+  /** Everything the scenario did, in order. */
+  readonly performed: readonly DirectorAction[];
+  /** Hosts the take actually visited - the safety-relevant summary. */
+  readonly hosts: readonly string[];
   readonly identity?: AuthIdentity;
   /** Present only for a recording. */
   readonly encoded?: EncodeResult;
@@ -281,6 +285,8 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
       pace,
       viewport,
       steps: scenario.steps ?? [],
+      performed: director.performed,
+      hosts: hostsVisited(director.performed),
       ...(identity ? { identity } : {}),
     };
   }
@@ -342,6 +348,8 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
     pace,
     viewport,
     steps: scenario.steps ?? [],
+    performed: director.performed,
+    hosts: hostsVisited(director.performed),
     ...(identity ? { identity } : {}),
     encoded,
     manifestPath,
@@ -370,4 +378,25 @@ function buildSuggestions(id: string, forensics: Forensics, mode: RunMode): stri
     out.push(`Re-check a fix in seconds with \`screencast-axi rehearse ${id}\``);
   }
   return out;
+}
+
+/**
+ * The hosts a take actually reached.
+ *
+ * The short answer to "where did this thing go". A scenario is arbitrary code
+ * driving a signed-in browser, and a list of two hosts is a very different
+ * thing to read than a list of nine.
+ */
+function hostsVisited(actions: readonly DirectorAction[]): string[] {
+  const hosts: string[] = [];
+  for (const action of actions) {
+    if (action.kind !== "goto" || !action.target) continue;
+    try {
+      const host = new URL(action.target).host;
+      if (!hosts.includes(host)) hosts.push(host);
+    } catch {
+      // Not an absolute URL; the goto resolved it against baseUrl already.
+    }
+  }
+  return hosts;
 }

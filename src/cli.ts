@@ -25,7 +25,7 @@ const TOP_LEVEL_HELP = `${[
   ``,
   `commands:`,
   `  scaffold <id>        Write a scenario skeleton`,
-  `  rehearse <id|path>   Run a scenario without recording - proves the selectors`,
+  `  rehearse <id|path>   Dry run: prints what it does. --headed to watch it`,
   `  record   <id|path>   Run it for real and encode the clip`,
   `  auth login|check     Sign in by hand once, or check the saved session`,
   `  guide [topic]        Topic-sized guidance. Run bare to list topics`,
