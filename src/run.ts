@@ -3,7 +3,7 @@ import { captureSize, openContext, resolveViewport, type ResolvedViewport } from
 import { selectStrategy, type ResolvedConfig } from "./config.js";
 import type { AuthContext, AuthIdentity } from "./auth/types.js";
 import { Director, type DirectorAction } from "./director.js";
-import { encode, type EncodeResult } from "./encode.js";
+import { encode, type EncodeResult, type EncodeSettings } from "./encode.js";
 import { ScreencastError } from "./errors.js";
 import { captureFailure, type Forensics } from "./forensics.js";
 import { hashSteps, hashText, upsertEntry, type ManifestEntry } from "./manifest.js";
@@ -28,6 +28,8 @@ export interface RunOptions {
   readonly viewport?: Viewport;
   readonly orientation?: "portrait" | "landscape";
   readonly keepRaw?: boolean;
+  /** Per-run overrides on the encode settings, e.g. the looping formats. */
+  readonly deliverables?: Partial<EncodeSettings>;
   /** Named strategy, or false to record signed out. */
   readonly auth?: string | false;
   readonly toolchain?: Toolchain;
@@ -308,6 +310,7 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
 
   const encoded = await encode({
     ...config.deliverables,
+    ...options.deliverables,
     width,
     input: rawVideoPath,
     outDir,

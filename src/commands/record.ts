@@ -35,6 +35,10 @@ export const RECORD_FLAGS: FlagSpecs = {
   out: { kind: "string", description: "Output directory", placeholder: "dir" },
   all: { kind: "boolean", description: "Record every scenario the config lists" },
   full: { kind: "boolean", description: "Include the full action log" },
+  gif: { kind: "boolean", description: "Also emit a looping GIF" },
+  webp: { kind: "boolean", description: "Also emit a looping WebP (half a GIF's size)" },
+  "loop-width": { kind: "number", description: "Width of the looping formats" },
+  "loop-fps": { kind: "number", description: "Frame rate of the looping formats" },
   "keep-raw": { kind: "boolean", description: "Keep the raw capture for inspection" },
 };
 
@@ -188,6 +192,21 @@ export async function recordCommand(args: string[], mode: RunMode): Promise<AxiS
   const targetMs =
     flags["duration"] !== undefined ? parseDuration(flags["duration"] as string) : null;
 
+  // Looping formats are for the places a <video> does not render. They are far
+  // heavier than the mp4, so they stay opt-in per run.
+  const loops =
+    flags["gif"] === true ||
+    flags["webp"] === true ||
+    flags["loop-width"] !== undefined ||
+    flags["loop-fps"] !== undefined
+      ? {
+          ...(flags["gif"] === true ? { gif: true } : {}),
+          ...(flags["webp"] === true ? { animatedWebp: true } : {}),
+          ...(flags["loop-width"] !== undefined ? { gifWidth: flags["loop-width"] as number } : {}),
+          ...(flags["loop-fps"] !== undefined ? { gifFps: flags["loop-fps"] as number } : {}),
+        }
+      : null;
+
   const results: RunResult[] = [];
   const solutions = new Map<string, PaceSolution>();
   for (const { scenario, file } of selected) {
@@ -211,6 +230,7 @@ export async function recordCommand(args: string[], mode: RunMode): Promise<AxiS
           ? { auth: flags["auth"] as string }
           : {}),
       ...(viewport ? { viewport } : {}),
+      ...(loops ? { deliverables: loops } : {}),
       ...(toolchain ? { toolchain } : {}),
       // stderr: stdout stays reserved for the final payload.
       log: (message: string) => void process.stderr.write(`${message}\n`),

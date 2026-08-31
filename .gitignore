@@ -12,3 +12,7 @@ tmp/
 
 # Scratch project for trying the CLI against a real site
 .demo/
+
+# The demo project links the package into itself to record the README clip
+demo/node_modules
+demo/.screencast/

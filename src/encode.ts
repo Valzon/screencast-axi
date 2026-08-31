@@ -2,6 +2,7 @@ import { mkdir, rm, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
 import {
   detectToolchain,
+  installHint,
   missingFfmpegError,
   runOrThrow,
   type PosterEncoder,
@@ -16,10 +17,22 @@ export interface EncodeSettings {
   readonly mp4: { readonly crf: number; readonly preset: string; readonly profile: string };
   readonly webm: { readonly crf: number };
   readonly poster: { readonly quality: number };
-  /** GIF is opt-in: a 12s clip is roughly ten times the mp4 size. */
+  /**
+   * Looping images, for the places a `<video>` does not render: a README, an
+   * npm page, an email. Both are opt-in and both are far heavier than the mp4
+   * - measured on a real 16.7s screencast at 800px/15fps, the mp4 was 182 KB,
+   * animated WebP 944 KB and GIF 2,034 KB.
+   *
+   * Prefer WebP: same content, roughly half the bytes, and full colour rather
+   * than a 256-entry palette. GIF is the fallback for somewhere that will not
+   * render WebP.
+   */
   readonly gif: boolean;
+  readonly animatedWebp: boolean;
   readonly gifWidth: number;
   readonly gifFps: number;
+  /** Quality for the animated WebP, 0-100. */
+  readonly animatedWebpQuality: number;
 }
 
 export const DEFAULT_ENCODE_SETTINGS: EncodeSettings = {
@@ -29,8 +42,10 @@ export const DEFAULT_ENCODE_SETTINGS: EncodeSettings = {
   webm: { crf: 34 },
   poster: { quality: 82 },
   gif: false,
+  animatedWebp: false,
   gifWidth: 800,
   gifFps: 15,
+  animatedWebpQuality: 55,
 };
 
 export interface EncodeOptions extends EncodeSettings {
@@ -51,6 +66,7 @@ export interface EncodeResult {
   readonly webm: string;
   readonly poster: string;
   readonly gif?: string;
+  readonly animatedWebp?: string;
   /** Byte size per deliverable, keyed by file name. */
   readonly sizes: Readonly<Record<string, number>>;
   /** Which poster path was taken, for the CLI to report. */
@@ -129,8 +145,12 @@ export async function encode(opts: EncodeOptions): Promise<EncodeResult> {
 
   const poster = await encodePoster(opts, toolchain, ffmpeg, trim, scale);
 
+  // Both looping formats come from the same palette pass, so asking for the
+  // pair costs one extra conversion rather than a second encode.
   let gif: string | undefined;
-  if (opts.gif) {
+  let animatedWebp: string | undefined;
+  if (opts.gif || opts.animatedWebp) {
+    const wantsGif = opts.gif;
     gif = join(opts.outDir, `${opts.id}.gif`);
     const palette = join(opts.outDir, `.${opts.id}.palette.png`);
     const gifScale = `fps=${opts.gifFps},scale=${opts.gifWidth}:-1:flags=lanczos`;
@@ -157,10 +177,43 @@ export async function encode(opts: EncodeOptions): Promise<EncodeResult> {
       gif,
     ]);
     await rm(palette, { force: true });
+
+    if (opts.animatedWebp) {
+      // gif2webp rather than ffmpeg: the same builds that lack libwebp for the
+      // poster lack it here too, and gif2webp ships in the same package as the
+      // cwebp the poster already falls back to.
+      const converter = toolchain.gif2webp;
+      if (!converter) {
+        throw new Error(
+          "gif2webp was not found, so an animated WebP cannot be produced. " +
+            `Install it with \`${installHint("cwebp")}\` (same package as cwebp), ` +
+            "or drop `animatedWebp` and use the GIF.",
+        );
+      }
+      animatedWebp = join(opts.outDir, `${opts.id}.anim.webp`);
+      await runOrThrow(converter.path, [
+        "-quiet",
+        "-lossy",
+        "-q",
+        String(opts.animatedWebpQuality),
+        "-m",
+        "6",
+        gif,
+        "-o",
+        animatedWebp,
+      ]);
+    }
+
+    if (!wantsGif) {
+      await rm(gif, { force: true });
+      gif = undefined;
+    }
   }
 
   const sizes: Record<string, number> = {};
-  for (const file of [mp4, webm, poster, gif].filter((f): f is string => Boolean(f))) {
+  for (const file of [mp4, webm, poster, gif, animatedWebp].filter((f): f is string =>
+    Boolean(f),
+  )) {
     sizes[basename(file)] = (await stat(file)).size;
   }
 
@@ -169,6 +222,7 @@ export async function encode(opts: EncodeOptions): Promise<EncodeResult> {
     webm,
     poster,
     ...(gif ? { gif } : {}),
+    ...(animatedWebp ? { animatedWebp } : {}),
     sizes,
     posterEncoder: toolchain.posterEncoder,
   };

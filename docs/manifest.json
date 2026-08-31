@@ -1,0 +1,27 @@
+[
+  {
+    "id": "demo",
+    "title": "A scripted workflow, recorded",
+    "description": "Adding and completing a task in a real app, with a drawn cursor and captions.",
+    "steps": [
+      "Your scenario drives the real app",
+      "Typed the way a person types it",
+      "And the app responds on camera"
+    ],
+    "width": 880,
+    "height": 520,
+    "durationMs": 8761,
+    "recordedAt": "2026-08-31T20:52:38.384Z",
+    "pace": 0.781,
+    "formats": [
+      "mp4",
+      "webm",
+      "webp",
+      "gif",
+      "webp"
+    ],
+    "sourceHash": "fd959516bafbcc0e",
+    "stepsHash": "8d2482e9786cedc7",
+    "recorderVersion": "0.0.0"
+  }
+]

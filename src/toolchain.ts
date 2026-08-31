@@ -92,6 +92,11 @@ export async function resolveFfmpeg(): Promise<BinaryInfo | null> {
   return probe("ffmpeg", "path");
 }
 
+/** gif2webp, which turns the GIF pass into an animated WebP. */
+export async function resolveGif2Webp(): Promise<BinaryInfo | null> {
+  return probe("gif2webp", "path");
+}
+
 export async function resolveCwebp(): Promise<BinaryInfo | null> {
   const override = process.env[CWEBP_ENV];
   return probe(override ?? "cwebp", override ? "env" : "path");
@@ -120,6 +125,7 @@ export type PosterEncoder = "ffmpeg" | "cwebp" | "png";
 export interface Toolchain {
   readonly ffmpeg: BinaryInfo | null;
   readonly cwebp: BinaryInfo | null;
+  readonly gif2webp: BinaryInfo | null;
   readonly posterEncoder: PosterEncoder;
 }
 
@@ -136,8 +142,14 @@ export function choosePosterEncoder(ffmpegHasWebp: boolean, hasCwebp: boolean): 
 export async function detectToolchain(): Promise<Toolchain> {
   const ffmpeg = await resolveFfmpeg();
   const cwebp = await resolveCwebp();
+  const gif2webp = await resolveGif2Webp();
   const ffmpegHasWebp = ffmpeg !== null && (await ffmpegSupportsWebp(ffmpeg.path));
-  return { ffmpeg, cwebp, posterEncoder: choosePosterEncoder(ffmpegHasWebp, cwebp !== null) };
+  return {
+    ffmpeg,
+    cwebp,
+    gif2webp,
+    posterEncoder: choosePosterEncoder(ffmpegHasWebp, cwebp !== null),
+  };
 }
 
 /** Platform-appropriate install line, so an error is fixable in one step. */
