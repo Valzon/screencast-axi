@@ -1,4 +1,4 @@
-import type { AxiStructuredOutput } from "../types.js";
+import type { AxiStructuredOutput } from "../output.js";
 
 /**
  * The no-argument view: live data, never help text (AXI principle 8).

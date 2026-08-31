@@ -1,5 +1,6 @@
 import { AxiError } from "axi-sdk-js";
-import type { AxiStructuredOutput } from "../types.js";
+import { parseFlags } from "../flags.js";
+import type { AxiStructuredOutput } from "../output.js";
 
 /**
  * Topic-sized guidance, pulled one topic at a time.
@@ -24,16 +25,54 @@ const TOPICS: Record<string, Topic> = {
       "and the recorder overlays a synthetic cursor and captions, then encodes",
       "the capture to mp4, webm and a poster image.",
       "",
-      "Build status: this version ships the CLI shell only. The recorder,",
-      "scenario authoring, auth and encoding are not wired up yet, so there is",
-      "nothing to record with. Run `screencast-axi --version` to check what you",
-      "have, and see the repository README for the roadmap.",
+      "Build status: the recorder core is in place (the action API, the page",
+      "overlay, the encode pipeline) but nothing wires it to a command yet -",
+      "there is no `record` verb, no scenario discovery and no auth. Until",
+      "there is, the pieces are usable only as a library import.",
+    ],
+  },
+  encoding: {
+    summary: "What the recorder produces, and what it needs installed",
+    body: [
+      "Every take produces an mp4 (h264, faststart), a webm (VP9) and a poster",
+      "image. GIF is opt-in - a 12-second clip is roughly ten times the mp4.",
+      "",
+      "ffmpeg is required and is not bundled: it is 80MB+ per platform, and",
+      "which build you have matters. Many builds - Homebrew's among them - ship",
+      "without libwebp, so the poster falls back from ffmpeg to cwebp to PNG.",
+      "A missing WebP encoder costs you file size, never a recording.",
+      "",
+      "ffmpeg is looked up in this order: $SCREENCAST_FFMPEG, then an installed",
+      "`ffmpeg-static` (add it as a dev dependency if you would rather not",
+      "install ffmpeg system-wide), then PATH.",
+    ],
+  },
+  overlay: {
+    summary: "The synthetic cursor, captions and drag ghost, and how to theme them",
+    body: [
+      "Playwright's video contains no mouse pointer, which makes any clip of a",
+      "click or a drag unreadable. The recorder injects an overlay that draws a",
+      "pointer following the real one, a click ripple, a drag ghost and a",
+      "caption bar - all inside a shadow root, so no page CSS can reach them.",
+      "",
+      "Everything is themeable: accent colour, pointer shape, caption position,",
+      "typography and fade. `hideSelectors` removes page chrome that should not",
+      "appear in footage - a framework error badge, a cookie banner, a staging",
+      "ribbon.",
+      "",
+      "The overlay re-mounts itself if the page replaces its document, because",
+      "that detaches the overlay while leaving its API in place. Without the",
+      "recovery, captions would stop appearing and the take would keep",
+      "recording as though nothing were wrong.",
     ],
   },
 };
 
 export function guideCommand(args: string[]): AxiStructuredOutput {
-  const [topic, ...rest] = args;
+  // No flags of its own, but it still goes through the parser so an unknown
+  // flag is rejected here exactly as it is everywhere else.
+  const { positionals } = parseFlags(args, {});
+  const [topic, ...rest] = positionals;
 
   if (rest.length > 0) {
     throw new AxiError(`Unexpected argument: ${rest[0]}`, "VALIDATION_ERROR", [

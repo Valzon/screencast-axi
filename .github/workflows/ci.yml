@@ -20,6 +20,14 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # The overlay is stringified into a real page, which is the most
+      # breakable thing here, so those tests need an actual browser.
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg webp
+
       - name: Build
         run: pnpm build
 

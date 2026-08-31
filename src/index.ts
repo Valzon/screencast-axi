@@ -1,8 +1,41 @@
 /**
  * Public authoring surface.
  *
- * Kept free of any runtime Playwright import - scenario types reference
- * Playwright through `import type` only, so importing this module costs
- * nothing at runtime and works in a project that has no browser installed.
+ * Playwright is referenced through `import type` only, so importing this
+ * module costs nothing at runtime and works in a project that has no browser
+ * installed - a site reading clip metadata at build time should not have to
+ * install one.
  */
 export { VERSION } from "./version.js";
+
+export { Director, type DirectorOptions } from "./director.js";
+export {
+  defineScenario,
+  isScenario,
+  type DefinedScenario,
+  type Scenario,
+  type ScenarioContext,
+  type Target,
+  type Viewport,
+} from "./types.js";
+export {
+  DEFAULT_OVERLAY_THEME,
+  resolveOverlayTheme,
+  type OverlayApi,
+  type OverlayTheme,
+  type ResolvedOverlayTheme,
+} from "./overlay.js";
+export {
+  DEFAULT_ENCODE_SETTINGS,
+  encode,
+  type EncodeOptions,
+  type EncodeResult,
+  type EncodeSettings,
+} from "./encode.js";
+export {
+  detectToolchain,
+  installHint,
+  type BinaryInfo,
+  type PosterEncoder,
+  type Toolchain,
+} from "./toolchain.js";
