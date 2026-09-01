@@ -1,6 +1,6 @@
 {
   "name": "screencast-axi",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "packageManager": "pnpm@11.24.0",
   "description": "AXI-compliant screencast recorder - script a web workflow, record it with a synthetic cursor and captions, encode to mp4/webm/poster. Requires ffmpeg.",
   "type": "module",
