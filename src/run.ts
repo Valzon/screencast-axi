@@ -337,7 +337,11 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
 
   if (!options.keepRaw) await rm(rawVideoPath, { force: true });
 
-  const formats = Object.keys(encoded.sizes).map((f) => f.split(".").pop() ?? "");
+  // Everything after `<id>.`, not just the final extension: a poster and an
+  // animated WebP both end in `.webp`, and recording them both as "webp"
+  // leaves the manifest unable to tell them apart - which then reports the
+  // animation as an unclaimed file and never checks it for existence.
+  const formats = Object.keys(encoded.sizes).map((name) => name.slice(scenario.id.length + 1));
 
   const entry: ManifestEntry = {
     id: scenario.id,

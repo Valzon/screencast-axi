@@ -38,6 +38,9 @@ comments.</sup>
 
 ### Records a sign-in, or skips past one
 
+> _"Sign in to our staging dashboard and record a 15 second clip of creating an invoice. I will
+> do the login myself."_
+
 A login is an ordinary workflow as far as the recorder is concerned: a field, a field, a button.
 It is worth filming, because it is the part of a product most demos skip.
 
@@ -47,11 +50,8 @@ It is worth filming, because it is the part of a product most demos skip.
 </picture>
 
 For a real app you usually want the opposite - the clip should open already through the door
-rather than spend its first seconds on a form. So signing in becomes a one-time human step:
-
-```sh
-screencast-axi auth login --interactive
-```
+rather than spend its first seconds on a form. So signing in becomes a one-time human step, and
+this is what that looks like from your side:
 
 > **A real Chrome window opens on your screen, at the site you are recording.**
 > Sign in there however that site wants: password, SSO, a magic link, two-factor, a passkey.
@@ -59,20 +59,19 @@ screencast-axi auth login --interactive
 > Nothing is ever typed into the terminal, and no credential passes through this package. The
 > session is saved into a Chrome profile on your machine, and every later take reuses it.
 
-An agent can open that window for you rather than making you retype the command, but it cannot
-sign in for you and will not try: without `--interactive` it stops and says a person is needed,
-and it refuses outright where no window could appear, such as a headless CI box. The wait is
-bounded, so it can never hang.
+An agent can open that window for you rather than making you retype a command, but it cannot sign
+in for you and will not try: without `--interactive` it stops and says a person is needed, and it
+refuses outright where no window could appear, such as a headless CI box. The wait is bounded, so
+it can never hang.
 
-For a login you can script, an `AuthStrategy` object in the config does the same job in typed
-code ([worked example](demo/auth/form-login.ts)). Either way it runs before recording starts, so
-none of it lands in the clip.
+For a login you can script, an `AuthStrategy` object in the config does the same job in typed code
+([worked example](demo/auth/form-login.ts)). Either way it runs before recording starts, so none
+of it lands in the clip.
 
 ### Renders at phone and tablet viewports
 
-```sh
-screencast-axi record onboarding --device "iPhone 13" --orientation portrait
-```
+> _"Record our onboarding on an iPhone, portrait, about fifteen seconds - I want it for the app
+> store listing."_
 
 A device preset does more than set a width. Its `isMobile` and `hasTouch` flags decide whether the
 site's own `@media (hover: none)` and touch rules apply at all, and it carries the right user
@@ -354,10 +353,191 @@ import { readManifest, clipFilesFor } from "screencast-axi/manifest";
 
 That entry point has no runtime dependencies at all.
 
+## Command reference
+
+<!-- reference:start -->
+
+Every command takes `--help`. Flags always come after the command:
+`screencast-axi <command> [args] [flags]`. An unknown flag is a usage error rather than
+something quietly ignored.
+
+#### `init`
+
+Write a config, a scenarios directory and a gitignore entry.
+
+```sh
+screencast-axi init
+```
+
+| Flag          | What it does                      |
+| ------------- | --------------------------------- |
+| `--out <dir>` | Where clips should be written.    |
+| `--url <url>` | Base URL for the site you record. |
+| `--force`     | Overwrite an existing config.     |
+
+#### `scaffold`
+
+Write a scenario skeleton so the boilerplate is never what goes wrong.
+
+```sh
+screencast-axi scaffold <id>
+```
+
+| Flag              | What it does                              |
+| ----------------- | ----------------------------------------- |
+| `--url <url>`     | Base URL the scenario opens.              |
+| `--title <text>`  | Human title for the clip.                 |
+| `--dir <path>`    | Where to write it.                        |
+| `--tour <value>`  | Write an n-stop page walkthrough instead. |
+| `--device <name>` | Playwright device preset.                 |
+
+#### `rehearse`
+
+Run a scenario without recording, and print every action it took.
+
+```sh
+screencast-axi rehearse <id|path...>
+```
+
+| Flag                | What it does                              |
+| ------------------- | ----------------------------------------- |
+| `--config <path>`   | Path to a config file.                    |
+| `--base-url <url>`  | Override the scenario's base URL.         |
+| `--pace <value>`    | Speed multiplier; lower is faster.        |
+| `--device <name>`   | Playwright device preset.                 |
+| `--viewport <WxH>`  | Explicit size, e.g. 390x844.              |
+| `--orientation <o>` | portrait or landscape.                    |
+| `--headed`          | Watch it happen in a real browser window. |
+| `--auth <name>`     | Named auth strategy from the config.      |
+| `--no-auth`         | Record signed out.                        |
+
+#### `record`
+
+Run a scenario for real and encode the clip.
+
+```sh
+screencast-axi record <id|path...>
+```
+
+| Flag                   | What it does                                                          |
+| ---------------------- | --------------------------------------------------------------------- |
+| `--config <path>`      | Path to a config file.                                                |
+| `--base-url <url>`     | Override the scenario's base URL.                                     |
+| `--pace <value>`       | Speed multiplier; lower is faster.                                    |
+| `--device <name>`      | Playwright device preset.                                             |
+| `--viewport <WxH>`     | Explicit size, e.g. 390x844.                                          |
+| `--orientation <o>`    | portrait or landscape.                                                |
+| `--headed`             | Watch it happen in a real browser window.                             |
+| `--auth <name>`        | Named auth strategy from the config.                                  |
+| `--no-auth`            | Record signed out.                                                    |
+| `--duration <30s>`     | Aim for this length, e.g. 30s (measures first, then solves for pace). |
+| `--out <dir>`          | Output directory.                                                     |
+| `--all`                | Record every scenario the config lists.                               |
+| `--full`               | Include the full action log.                                          |
+| `--gif`                | Also emit a looping GIF.                                              |
+| `--webp`               | Also emit a looping WebP (half a GIF's size).                         |
+| `--loop-width <value>` | Width of the looping formats.                                         |
+| `--loop-fps <value>`   | Frame rate of the looping formats.                                    |
+| `--keep-raw`           | Keep the raw capture for inspection.                                  |
+
+#### `list`
+
+Every scenario, with what needs re-shooting.
+
+```sh
+screencast-axi list
+```
+
+| Flag              | What it does                              |
+| ----------------- | ----------------------------------------- |
+| `--config <path>` | Path to a config file.                    |
+| `--full`          | Every field, not the four-column summary. |
+| `--stale`         | Only what needs re-shooting.              |
+| `--tag <name>`    | Filter by scenario tag. Repeatable.       |
+
+#### `show`
+
+One clip in full: files, sizes, narration, when it was shot.
+
+```sh
+screencast-axi show <id>
+```
+
+| Flag              | What it does                   |
+| ----------------- | ------------------------------ |
+| `--config <path>` | Path to a config file.         |
+| `--full`          | Include untruncated step text. |
+
+#### `check`
+
+Cross-reference the manifest, the scenarios and the files on disk.
+
+```sh
+screencast-axi check
+```
+
+| Flag              | What it does                                                    |
+| ----------------- | --------------------------------------------------------------- |
+| `--config <path>` | Path to a config file.                                          |
+| `--fix-orphans`   | Delete manifest entries and media with no scenario behind them. |
+
+#### `doctor`
+
+Check everything a recording needs, in one pass.
+
+```sh
+screencast-axi doctor
+```
+
+| Flag              | What it does           |
+| ----------------- | ---------------------- |
+| `--config <path>` | Path to a config file. |
+
+#### `setup`
+
+Install the browser; name anything you must install yourself.
+
+```sh
+screencast-axi setup
+```
+
+| Flag              | What it does                        |
+| ----------------- | ----------------------------------- |
+| `--browsers-only` | Install Chromium and stop.          |
+| `--scope <s>`     | For `setup hooks`: user or project. |
+
+#### `auth`
+
+Sign in by hand once, or check the saved session still works.
+
+```sh
+screencast-axi auth login|check [name]
+```
+
+| Flag                  | What it does                                                 |
+| --------------------- | ------------------------------------------------------------ |
+| `--config <path>`     | Path to a config file.                                       |
+| `--base-url <url>`    | Site to sign in to.                                          |
+| `--interactive`       | Required for `login`: opens a real browser.                  |
+| `--save-state <path>` | Write a Playwright storage state here as well.               |
+| `--headed`            | Show the browser for `check`.                                |
+| `--wait <5m>`         | How long `login` waits for the window to close (default 5m). |
+
+#### `guide`
+
+Topic-sized guidance, pulled one topic at a time.
+
+```sh
+screencast-axi guide [topic]
+```
+
+_No flags._
+<!-- reference:end -->
+
 ## Roadmap
 
-- `list`, `show`, `check`, `doctor`, `setup`, `init`
-- Publishing to npm
+Publishing to npm. The command surface is complete; `setup hooks` is declared but not implemented
+and says so rather than pretending.
 
 ## Contributing
 

@@ -8,6 +8,10 @@ import { guideCommand, guideHelp } from "./commands/guide.js";
 import { recordCommand, RECORD_FLAGS, REHEARSE_FLAGS } from "./commands/record.js";
 import { scaffoldCommand, SCAFFOLD_FLAGS } from "./commands/scaffold.js";
 import { authCommand, AUTH_FLAGS } from "./commands/auth.js";
+import { listCommand, showCommand, LIST_FLAGS, SHOW_FLAGS } from "./commands/list.js";
+import { checkCommand, CHECK_FLAGS } from "./commands/check.js";
+import { doctorCommand, DOCTOR_FLAGS } from "./commands/doctor.js";
+import { setupCommand, initCommand, SETUP_FLAGS, INIT_FLAGS } from "./commands/setup.js";
 import { renderFlagHelp, type FlagSpecs } from "./flags.js";
 
 export const DESCRIPTION =
@@ -24,10 +28,16 @@ const TOP_LEVEL_HELP = `${[
   `usage: screencast-axi <command> [args] [flags]`,
   ``,
   `commands:`,
+  `  init                 Write a config and a scenarios directory`,
   `  scaffold <id>        Write a scenario skeleton`,
   `  rehearse <id|path>   Dry run: prints what it does. --headed to watch it`,
   `  record   <id|path>   Run it for real and encode the clip`,
   `  auth login|check     Sign in by hand once, or check the saved session`,
+  `  list                 Every scenario, and what needs re-shooting`,
+  `  show <id>            One clip in full`,
+  `  check                Manifest, scenarios and files, cross-referenced`,
+  `  doctor               Everything a recording needs, checked at once`,
+  `  setup                Install the browser; name what you must install`,
   `  guide [topic]        Topic-sized guidance. Run bare to list topics`,
   ``,
   `flags must come after the command. \`--version\`, \`--help\` excepted.`,
@@ -72,6 +82,42 @@ const COMMAND_HELP: Record<string, string> = {
       "screencast-axi auth check <name>          A named strategy from the config",
     ],
     AUTH_FLAGS,
+  ),
+  list: commandHelp(
+    "list",
+    "Every scenario, with what needs re-shooting",
+    ["screencast-axi list", "screencast-axi list --stale", "screencast-axi list --full"],
+    LIST_FLAGS,
+  ),
+  show: commandHelp(
+    "show",
+    "One clip in full: its files, sizes, narration and when it was shot",
+    ["screencast-axi show product-tour"],
+    SHOW_FLAGS,
+  ),
+  check: commandHelp(
+    "check",
+    "Cross-references the manifest, the scenarios and the files on disk",
+    ["screencast-axi check", "screencast-axi check --fix-orphans"],
+    CHECK_FLAGS,
+  ),
+  doctor: commandHelp(
+    "doctor",
+    "Checks everything a recording needs, in one pass",
+    ["screencast-axi doctor"],
+    DOCTOR_FLAGS,
+  ),
+  setup: commandHelp(
+    "setup",
+    "Installs the browser and names anything you have to install yourself",
+    ["screencast-axi setup", "screencast-axi setup --browsers-only"],
+    SETUP_FLAGS,
+  ),
+  init: commandHelp(
+    "init",
+    "Writes a config, a scenarios directory, and a gitignore entry",
+    ["screencast-axi init", "screencast-axi init --url https://example.com"],
+    INIT_FLAGS,
   ),
   scaffold: commandHelp(
     "scaffold",
@@ -158,6 +204,12 @@ export async function main(argv?: string[]): Promise<void> {
       guide: (args) => guideCommand(args),
       scaffold: (args) => scaffoldCommand(args),
       auth: (args) => authCommand(args),
+      list: (args) => listCommand(args),
+      show: (args) => showCommand(args),
+      check: (args) => checkCommand(args),
+      doctor: (args) => doctorCommand(args),
+      setup: (args) => setupCommand(args),
+      init: (args) => initCommand(args),
       record: (args) => recordCommand(args, "record"),
       rehearse: (args) => recordCommand(args, "rehearse"),
     },

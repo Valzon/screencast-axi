@@ -43,6 +43,9 @@ jobs:
       - name: Skill is in sync with its generator
         run: pnpm build:skill --check
 
+      - name: README command reference is in sync with the flags
+        run: pnpm build:reference --check
+
       - name: CLI answers from the built output
         run: |
           test "$(node dist/bin/screencast-axi.js --version)" = "$(node -p "require('./package.json').version")"

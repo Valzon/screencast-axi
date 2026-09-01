@@ -165,6 +165,7 @@ export interface ClipFiles {
   readonly webm: string;
   readonly poster: string;
   readonly gif?: string;
+  readonly animatedWebp?: string;
 }
 
 /**
@@ -182,13 +183,26 @@ export function clipFilesFor(entry: ManifestEntry, dir: string): ClipFiles {
     webm: join(dir, `${entry.id}.webm`),
     poster: join(dir, `${entry.id}.${poster}`),
     ...(formats.includes("gif") ? { gif: join(dir, `${entry.id}.gif`) } : {}),
+    ...(formats.includes("anim.webp") ? { animatedWebp: join(dir, `${entry.id}.anim.webp`) } : {}),
   };
+}
+
+/** Every file an entry claims, by name. What `check` compares disk against. */
+export function claimedFiles(entry: ManifestEntry): string[] {
+  const formats = entry.formats ?? ["mp4", "webm", "webp"];
+  return formats.map((f) => `${entry.id}.${f}`);
 }
 
 /** Whether every file the entry claims is actually on disk. */
 export function missingFiles(entry: ManifestEntry, dir: string): string[] {
   const files = clipFilesFor(entry, dir);
-  return [files.mp4, files.webm, files.poster, ...(files.gif ? [files.gif] : [])]
+  return [
+    files.mp4,
+    files.webm,
+    files.poster,
+    ...(files.gif ? [files.gif] : []),
+    ...(files.animatedWebp ? [files.animatedWebp] : []),
+  ]
     .filter((f) => !existsSync(f))
     .map((f) => basename(f));
 }

@@ -12,15 +12,15 @@
     ],
     "width": 880,
     "height": 520,
-    "durationMs": 18274,
-    "recordedAt": "2026-08-31T21:05:56.871Z",
+    "durationMs": 21770,
+    "recordedAt": "2026-09-01T01:51:26.906Z",
     "pace": 1,
     "formats": [
       "mp4",
       "webm",
       "webp",
       "gif",
-      "webp"
+      "anim.webp"
     ],
     "sourceHash": "f6416da477d389b1",
     "stepsHash": "b00f25fa50644bd0",
@@ -39,43 +39,18 @@
     ],
     "width": 900,
     "height": 482,
-    "durationMs": 9904,
-    "recordedAt": "2026-08-31T22:18:17.263Z",
+    "durationMs": 11168,
+    "recordedAt": "2026-09-01T01:52:25.812Z",
     "pace": 1,
     "formats": [
       "mp4",
       "webm",
       "webp",
       "gif",
-      "webp"
+      "anim.webp"
     ],
     "sourceHash": "f57ffdbda5a96384",
     "stepsHash": "eb3a04137a6819e3",
-    "recorderVersion": "0.0.0"
-  },
-  {
-    "id": "usecase-drag",
-    "title": "A drag, recorded so it reads",
-    "description": "Moving an item between two lists on the SortableJS demo.",
-    "steps": [
-      "Pick up the item",
-      "Carry it across",
-      "It lands where you dropped it"
-    ],
-    "width": 900,
-    "height": 560,
-    "durationMs": 7360,
-    "recordedAt": "2026-08-31T21:38:55.819Z",
-    "pace": 1,
-    "formats": [
-      "mp4",
-      "webm",
-      "webp",
-      "gif",
-      "webp"
-    ],
-    "sourceHash": "03403ca6fc774a48",
-    "stepsHash": "5e55564e0b5e023d",
     "recorderVersion": "0.0.0"
   },
   {
@@ -90,15 +65,15 @@
     ],
     "width": 900,
     "height": 540,
-    "durationMs": 10264,
-    "recordedAt": "2026-08-31T22:06:38.258Z",
+    "durationMs": 10598,
+    "recordedAt": "2026-09-01T01:53:10.583Z",
     "pace": 1,
     "formats": [
       "mp4",
       "webm",
       "webp",
       "gif",
-      "webp"
+      "anim.webp"
     ],
     "sourceHash": "481d768aee25b593",
     "stepsHash": "3ea29c32b2bdad71",
@@ -115,8 +90,8 @@
     ],
     "width": 390,
     "height": 664,
-    "durationMs": 7521,
-    "recordedAt": "2026-08-31T22:06:55.245Z",
+    "durationMs": 7499,
+    "recordedAt": "2026-09-01T01:53:30.693Z",
     "pace": 1,
     "device": "iPhone 13",
     "formats": [
@@ -124,35 +99,10 @@
       "webm",
       "webp",
       "gif",
-      "webp"
+      "anim.webp"
     ],
     "sourceHash": "e830539e13a17a00",
     "stepsHash": "2e93a750481e0dee",
-    "recorderVersion": "0.0.0"
-  },
-  {
-    "id": "usecase-tour",
-    "title": "Three pages, one take",
-    "description": "A walkthrough of three pages, narrated and paced from one list of stops.",
-    "steps": [
-      "Start at the front door",
-      "The part people came for",
-      "And who is behind it"
-    ],
-    "width": 900,
-    "height": 560,
-    "durationMs": 11073,
-    "recordedAt": "2026-08-31T21:40:01.195Z",
-    "pace": 1,
-    "formats": [
-      "mp4",
-      "webm",
-      "webp",
-      "gif",
-      "webp"
-    ],
-    "sourceHash": "0c34a21bfe16f117",
-    "stepsHash": "68272f312dfccecc",
     "recorderVersion": "0.0.0"
   }
 ]

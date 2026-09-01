@@ -1,5 +1,5 @@
 import { ScreencastError } from "../errors.js";
-import { parseFlags } from "../flags.js";
+import { parseFlags, type FlagSpecs } from "../flags.js";
 import type { AxiStructuredOutput } from "../output.js";
 
 /**
@@ -25,9 +25,14 @@ const TOPICS: Record<string, Topic> = {
       "and the recorder overlays a synthetic cursor and captions, then encodes",
       "the capture to mp4, webm and a poster image.",
       "",
-      "The loop is: `scaffold` writes a skeleton, you fill in the run() body,",
-      "`rehearse` proves the selectors without encoding, and `record` shoots",
-      "the real take and writes the manifest.",
+      "The loop is: `init` sets up a project, `scaffold` writes a skeleton, you",
+      "fill in the run() body, `rehearse` proves the selectors without",
+      "encoding, and `record` shoots the real take and writes the manifest.",
+      "",
+      "`list` and `show` say what exists, `check` cross-references the manifest",
+      "against the scenarios and the files, and `doctor` checks everything a",
+      "recording needs in one pass - run it first if a take fails before its",
+      "own steps.",
       "",
       "For a page behind a login, see `guide auth`: a person signs in by hand",
       "once and every take afterwards reuses the session.",
@@ -227,10 +232,13 @@ const TOPICS: Record<string, Topic> = {
   },
 };
 
+/** No flags: it takes a topic and nothing else. */
+export const GUIDE_FLAGS: FlagSpecs = {};
+
 export function guideCommand(args: string[]): AxiStructuredOutput {
   // No flags of its own, but it still goes through the parser so an unknown
   // flag is rejected here exactly as it is everywhere else.
-  const { positionals } = parseFlags(args, {});
+  const { positionals } = parseFlags(args, GUIDE_FLAGS);
   const [topic, ...rest] = positionals;
 
   if (rest.length > 0) {
