@@ -7,4 +7,4 @@
  * package.json by a test - so a drift fails CI rather than shipping a CLI
  * that misreports its own version.
  */
-export const VERSION = "0.0.0"; // x-release-please-version
+export const VERSION = "0.1.0"; // x-release-please-version
