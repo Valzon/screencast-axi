@@ -3,6 +3,10 @@ name: Release
 on:
   push:
     branches: [main]
+  # Publish by hand, e.g. after a failed publish of a release that already
+  # exists. Rerunning the push run does not help: release-please sees the
+  # release is there and reports nothing to publish.
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -10,7 +14,10 @@ permissions:
 
 jobs:
   release-please:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
     steps:
       - uses: googleapis/release-please-action@v4
         id: release
@@ -18,23 +25,23 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
+  publish:
+    needs: release-please
+    if: always() && (needs.release-please.outputs.release_created == 'true' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    steps:
       - uses: actions/checkout@v5
-        if: ${{ steps.release.outputs.release_created }}
 
       - uses: pnpm/action-setup@v4
-        if: ${{ steps.release.outputs.release_created }}
 
       - uses: actions/setup-node@v5
-        if: ${{ steps.release.outputs.release_created }}
         with:
           node-version: 22
           cache: pnpm
           registry-url: https://registry.npmjs.org
 
       - run: pnpm install --frozen-lockfile
-        if: ${{ steps.release.outputs.release_created }}
 
       - run: pnpm publish --no-git-checks --access public
-        if: ${{ steps.release.outputs.release_created }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
