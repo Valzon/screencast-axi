@@ -102,3 +102,50 @@ describe("importing a project's packages", () => {
     expect(loaded?.marker).toBe("esm");
   });
 });
+
+/**
+ * The third instance of the same root cause, found by grepping for what the
+ * first two fixes had left behind.
+ *
+ * `ffmpeg-static` is the documented escape hatch for someone who would rather
+ * not install ffmpeg system-wide - so resolving it from this package's own
+ * location reported ffmpeg missing to precisely the people who had installed
+ * it so that it would not be.
+ */
+describe("ffmpeg-static", () => {
+  it("is looked up in the project, not beside this package", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "ffstatic-"));
+    try {
+      const pkgDir = join(dir, "node_modules", "ffmpeg-static");
+      mkdirSync(pkgDir, { recursive: true });
+      // A stand-in that reports a path, which is all resolveFfmpeg reads.
+      writeFileSync(
+        join(pkgDir, "package.json"),
+        JSON.stringify({ name: "ffmpeg-static", version: "1.0.0", main: "index.js" }),
+      );
+      writeFileSync(join(pkgDir, "index.js"), `module.exports = "/nonexistent/ffmpeg";`);
+
+      const found = await importFromProject<{ default?: unknown }>(
+        "ffmpeg-static",
+        (m) => typeof m.default === "string",
+        dir,
+      );
+      expect(found?.default).toBe("/nonexistent/ffmpeg");
+
+      // And nothing is found from a directory that does not have it.
+      const empty = mkdtempSync(join(tmpdir(), "noffstatic-"));
+      try {
+        const missing = await importFromProject<{ default?: unknown }>(
+          "ffmpeg-static",
+          (m) => typeof m.default === "string",
+          empty,
+        );
+        expect(missing).toBeNull();
+      } finally {
+        rmSync(empty, { recursive: true, force: true });
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
