@@ -1,5 +1,6 @@
 import type { Browser, BrowserContext, LaunchOptions, Page } from "playwright";
 import { ScreencastError } from "./errors.js";
+import { importFromProject } from "./resolve.js";
 import type { Viewport } from "./types.js";
 
 /**
@@ -40,23 +41,23 @@ export async function resolvePlaywright(): Promise<{
 
   const tried: string[] = [];
   for (const specifier of CANDIDATES) {
-    try {
-      const loaded = (await import(specifier)) as Partial<PlaywrightModule>;
-      // `@playwright/test` re-exports chromium, which is why it qualifies.
-      if (loaded.chromium) {
-        cached = { module: loaded as PlaywrightModule, specifier };
-        return cached;
-      }
-      tried.push(`${specifier} (no chromium export)`);
-    } catch {
-      tried.push(specifier);
+    // Resolved from the project first: Playwright is the consumer's, and a CLI
+    // running from an npx cache or a global install has none of its own.
+    // `@playwright/test` re-exports chromium, which is why it qualifies.
+    const loaded = await importFromProject<Partial<PlaywrightModule>>(specifier, (module) =>
+      Boolean(module.chromium),
+    );
+    if (loaded?.chromium) {
+      cached = { module: loaded as PlaywrightModule, specifier };
+      return cached;
     }
+    tried.push(specifier);
   }
 
   throw new ScreencastError("Playwright is not installed", "PLAYWRIGHT_MISSING", [
     "Install it: `pnpm add -D playwright`",
     "Then download the browser: `pnpm exec playwright install chromium`",
-    `Looked for: ${tried.join(", ")}`,
+    `Looked for ${tried.join(", ")} in ${process.cwd()}`,
   ]);
 }
 

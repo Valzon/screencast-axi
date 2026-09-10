@@ -226,3 +226,34 @@ describe("loading a scenario from a CommonJS project", () => {
     expect(config.outDir).toBe(join(dir, "from-cjs"));
   });
 });
+
+/**
+ * A scaffolded scenario opens by importing this package, and that specifier
+ * resolves from the scenario's own project. Run the CLI through `npx` and the
+ * package sits in a cache directory instead, so the import fails on a machine
+ * where the command itself plainly works.
+ */
+describe("a file that imports this package", () => {
+  it("says the project is missing it, rather than naming an unknown module", async () => {
+    const file = join(dir, "scenario.mjs");
+    writeFileSync(file, `import { defineScenario } from "screencast-axi";\nexport default {};\n`);
+
+    const error = await loadScenarioFiles([file]).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ScreencastError);
+    expect((error as ScreencastError).code).toBe("SELF_NOT_INSTALLED");
+    expect((error as ScreencastError).message).toContain("screencast-axi");
+    expect((error as ScreencastError).suggestions.join(" ")).toContain(
+      "pnpm add -D screencast-axi",
+    );
+  });
+
+  it("leaves an unrelated missing import alone", async () => {
+    const file = join(dir, "other.mjs");
+    writeFileSync(file, `import "totally-absent-package";\nexport default {};\n`);
+
+    const error = await loadScenarioFiles([file]).catch((e: unknown) => e);
+
+    expect((error as { code?: string }).code).not.toBe("SELF_NOT_INSTALLED");
+  });
+});

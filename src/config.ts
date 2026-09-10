@@ -1,12 +1,12 @@
 import { ScreencastError } from "./errors.js";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { DEFAULT_ENCODE_SETTINGS, type EncodeSettings } from "./encode.js";
 import { DEFAULT_SETTLE_MS } from "./director.js";
 import { DEFAULT_OVERLAY_THEME, type DeepPartial, type OverlayTheme } from "./overlay.js";
 import { isScenario, type DefinedScenario, type Viewport } from "./types.js";
+import { importFromProject } from "./resolve.js";
 import { noAuth } from "./auth/strategies.js";
 import type { AuthConfig, AuthStrategy } from "./auth/types.js";
 
@@ -150,38 +150,20 @@ let tsxRegistered = false;
 /**
  * Loads `tsx/esm/api` from the *project*, not from wherever this package sits.
  *
- * A bare `import("tsx/esm/api")` resolves against this module's own location.
- * Under the documented `npx -y screencast-axi` invocation that is npx's cache
- * directory, which has no tsx in it - so the loader was reported missing on
- * projects that had installed it. Resolving from the working directory finds
- * the tsx the project actually declared.
+ * See `importFromProject` for why the working directory has to come first.
  */
 async function registerTsx(): Promise<boolean> {
   if (tsxRegistered) return true;
 
-  const candidates: string[] = [];
-  try {
-    // Anchored on a file path inside cwd so node walks up from the project.
-    const fromProject = createRequire(join(process.cwd(), "__resolve__.js"));
-    candidates.push(pathToFileURL(fromProject.resolve("tsx/esm/api")).href);
-  } catch {
-    // No tsx in the project. The bare specifier below still covers the case
-    // where this package and tsx are installed side by side.
-  }
-  candidates.push("tsx/esm/api");
+  const tsx = await importFromProject<{ register?: () => void }>(
+    "tsx/esm/api",
+    (module) => typeof module.register === "function",
+  );
+  if (!tsx?.register) return false;
 
-  for (const specifier of candidates) {
-    try {
-      const tsx = (await import(specifier)) as { register?: () => void };
-      if (typeof tsx.register !== "function") continue;
-      tsx.register();
-      tsxRegistered = true;
-      return true;
-    } catch {
-      // Try the next candidate.
-    }
-  }
-  return false;
+  tsx.register();
+  tsxRegistered = true;
+  return true;
 }
 
 /**
@@ -207,6 +189,36 @@ function unwrapModule(module: Record<string, unknown>): Record<string, unknown> 
   return flattened;
 }
 
+/** This package's own name, as a scenario or config file imports it. */
+const SELF = "screencast-axi";
+
+/**
+ * Rewrites "cannot find screencast-axi" into something worth reading.
+ *
+ * A scaffolded scenario opens with `import { defineScenario } from
+ * "screencast-axi"`, and that specifier resolves from the *file's* project.
+ * Run the CLI through `npx` and this package sits in a cache directory
+ * instead, so the import fails on a machine where the command plainly works.
+ * Node's own message names a module the author never typed a path for, which
+ * reads like a broken install rather than a missing dependency.
+ */
+function selfImportFailure(file: string, error: unknown): ScreencastError | null {
+  const code = (error as { code?: string }).code;
+  if (code !== "MODULE_NOT_FOUND" && code !== "ERR_MODULE_NOT_FOUND") return null;
+
+  const message = error instanceof Error ? error.message : String(error);
+  if (!new RegExp(`'${SELF}(/[^']*)?'|"${SELF}(/[^"]*)?"`).test(message)) return null;
+
+  return new ScreencastError(
+    `Cannot load ${file}: it imports \`${SELF}\`, which this project does not have`,
+    "SELF_NOT_INSTALLED",
+    [
+      `Install it beside the file that imports it: \`pnpm add -D ${SELF}\``,
+      "Running the CLI through `npx` leaves the package in a cache the file cannot reach",
+    ],
+  );
+}
+
 async function importModule(file: string): Promise<Record<string, unknown>> {
   const url = pathToFileURL(file).href;
   try {
@@ -216,7 +228,7 @@ async function importModule(file: string): Promise<Record<string, unknown>> {
     const needsLoader =
       code === "ERR_UNKNOWN_FILE_EXTENSION" ||
       (error instanceof SyntaxError && /\.m?ts$/.test(file));
-    if (!needsLoader || tsxRegistered) throw error;
+    if (!needsLoader || tsxRegistered) throw selfImportFailure(file, error) ?? error;
 
     if (!(await registerTsx())) {
       throw new ScreencastError(
@@ -228,8 +240,12 @@ async function importModule(file: string): Promise<Record<string, unknown>> {
         ],
       );
     }
-    // Cache-bust so the retry does not get the failed module record back.
-    return unwrapModule((await import(`${url}?tsx=1`)) as Record<string, unknown>);
+    try {
+      // Cache-bust so the retry does not get the failed module record back.
+      return unwrapModule((await import(`${url}?tsx=1`)) as Record<string, unknown>);
+    } catch (retried) {
+      throw selfImportFailure(file, retried) ?? retried;
+    }
   }
 }
 
