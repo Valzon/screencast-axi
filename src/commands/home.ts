@@ -1,5 +1,5 @@
 import { readManifest } from "../manifest.js";
-import { loadConfig, loadScenarios } from "../config.js";
+import { loadConfig, loadScenarios, resolveConfigPath, type ResolvedConfig } from "../config.js";
 import type { AxiStructuredOutput } from "../output.js";
 
 type Status = "recorded" | "stale" | "never-recorded";
@@ -15,21 +15,45 @@ type Status = "recorded" | "stale" | "never-recorded";
  * The SDK prepends `{ bin, description }`, so this returns only the state.
  */
 export async function homeView(): Promise<AxiStructuredOutput> {
-  const config = await loadConfig().catch(() => null);
+  // A config that exists but throws is a different state from having none, and
+  // the difference is the whole answer: telling someone with a broken config to
+  // create one sends them to write a second file beside the one that is failing.
+  const configPath = resolveConfigPath();
+  let config: ResolvedConfig | null = null;
+  let configError: string | null = null;
+  try {
+    config = await loadConfig();
+  } catch (error) {
+    configError = error instanceof Error ? error.message : String(error);
+  }
 
   if (!config) {
     return {
-      config: "none",
+      config: configPath ?? "none",
+      ...(configError ? { error: configError } : {}),
       scenarios: [],
       totals: "0 scenarios",
-      help: [
-        "Create one: `screencast-axi scaffold <id> --url <url>`",
-        "Run `screencast-axi guide` for topic-sized guidance",
-      ],
+      help: configError
+        ? [
+            "The config above was found but could not be loaded - the error says why",
+            "Run `screencast-axi doctor` for the full diagnosis",
+          ]
+        : [
+            "Create one: `screencast-axi scaffold <id> --url <url>`",
+            "Run `screencast-axi guide` for topic-sized guidance",
+          ],
     };
   }
 
-  const loaded = await loadScenarios(config).catch(() => []);
+  // Scenario files fail one at a time and for their own reasons, so a broken
+  // one is reported as itself rather than collapsing the whole list to empty.
+  let loaded: Awaited<ReturnType<typeof loadScenarios>> = [];
+  let scenarioError: string | null = null;
+  try {
+    loaded = await loadScenarios(config);
+  } catch (error) {
+    scenarioError = error instanceof Error ? error.message : String(error);
+  }
   const { entries } = readManifest(config.outDir);
   const byId = new Map(entries.map((e) => [e.id, e]));
 
@@ -57,6 +81,7 @@ export async function homeView(): Promise<AxiStructuredOutput> {
 
   return {
     config: config.configPath ?? "none",
+    ...(scenarioError ? { error: scenarioError } : {}),
     out: config.outDir,
     scenarios: rows,
     totals:
@@ -64,11 +89,21 @@ export async function homeView(): Promise<AxiStructuredOutput> {
         ? "0 scenarios"
         : `${rows.length} scenarios, ${counts.recorded} recorded, ${counts.stale} stale, ${counts["never-recorded"]} never-recorded`,
     ...(orphans.length > 0 ? { orphaned: orphans.map((o) => o.id) } : {}),
-    help: buildHelp(rows, orphans.length),
+    help: buildHelp(rows, orphans.length, scenarioError),
   };
 }
 
-function buildHelp(rows: readonly { id: string; status: Status }[], orphans: number): string[] {
+function buildHelp(
+  rows: readonly { id: string; status: Status }[],
+  orphans: number,
+  scenarioError: string | null,
+): string[] {
+  if (scenarioError) {
+    return [
+      "The scenario files matched by the config could not be loaded - the error says why",
+      "Run `screencast-axi list` to see the failure on its own",
+    ];
+  }
   if (rows.length === 0) {
     return [
       "No scenarios found. Create one: `screencast-axi scaffold <id> --url <url>`",
