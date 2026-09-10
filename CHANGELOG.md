@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/Valzon/screencast-axi/compare/v0.1.0...v0.1.1) (2026-09-10)
+
+
+### Bug Fixes
+
+* load TypeScript scenarios when installed the documented way ([f3d9b1c](https://github.com/Valzon/screencast-axi/commit/f3d9b1c10bc049cc6e1a5d6ff3c5ab3598f12491))
+
 ## 0.1.0 (2026-09-10)
 
 
