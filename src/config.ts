@@ -1,6 +1,7 @@
 import { ScreencastError } from "./errors.js";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { DEFAULT_ENCODE_SETTINGS, type EncodeSettings } from "./encode.js";
 import { DEFAULT_SETTLE_MS } from "./director.js";
@@ -145,10 +146,71 @@ export function resolveConfigPath(explicit?: string, cwd = process.cwd()): strin
  * own code, so `tsx` is the documented way and an optional peer.
  */
 let tsxRegistered = false;
+
+/**
+ * Loads `tsx/esm/api` from the *project*, not from wherever this package sits.
+ *
+ * A bare `import("tsx/esm/api")` resolves against this module's own location.
+ * Under the documented `npx -y screencast-axi` invocation that is npx's cache
+ * directory, which has no tsx in it - so the loader was reported missing on
+ * projects that had installed it. Resolving from the working directory finds
+ * the tsx the project actually declared.
+ */
+async function registerTsx(): Promise<boolean> {
+  if (tsxRegistered) return true;
+
+  const candidates: string[] = [];
+  try {
+    // Anchored on a file path inside cwd so node walks up from the project.
+    const fromProject = createRequire(join(process.cwd(), "__resolve__.js"));
+    candidates.push(pathToFileURL(fromProject.resolve("tsx/esm/api")).href);
+  } catch {
+    // No tsx in the project. The bare specifier below still covers the case
+    // where this package and tsx are installed side by side.
+  }
+  candidates.push("tsx/esm/api");
+
+  for (const specifier of candidates) {
+    try {
+      const tsx = (await import(specifier)) as { register?: () => void };
+      if (typeof tsx.register !== "function") continue;
+      tsx.register();
+      tsxRegistered = true;
+      return true;
+    } catch {
+      // Try the next candidate.
+    }
+  }
+  return false;
+}
+
+/**
+ * Flattens CommonJS interop wrapping.
+ *
+ * A project without `"type": "module"` has its TypeScript compiled to CJS, and
+ * `import()` then hands back `{ default: { default: <the export> } }`. Looking
+ * only at the top level finds nothing, and the error - "no scenario exported"
+ * - points at a file that plainly exports one.
+ */
+function unwrapModule(module: Record<string, unknown>): Record<string, unknown> {
+  const flattened: Record<string, unknown> = { ...module };
+  for (const key of ["default", "module.exports"]) {
+    const value = module[key];
+    if (value && typeof value === "object") {
+      for (const [inner, innerValue] of Object.entries(value as Record<string, unknown>)) {
+        // Inner names win only where the outer level has nothing already.
+        if (!(inner in flattened)) flattened[inner] = innerValue;
+        else if (inner === "default") flattened[`${key}.${inner}`] = innerValue;
+      }
+    }
+  }
+  return flattened;
+}
+
 async function importModule(file: string): Promise<Record<string, unknown>> {
   const url = pathToFileURL(file).href;
   try {
-    return (await import(url)) as Record<string, unknown>;
+    return unwrapModule((await import(url)) as Record<string, unknown>);
   } catch (error) {
     const code = (error as { code?: string }).code;
     const needsLoader =
@@ -156,20 +218,18 @@ async function importModule(file: string): Promise<Record<string, unknown>> {
       (error instanceof SyntaxError && /\.m?ts$/.test(file));
     if (!needsLoader || tsxRegistered) throw error;
 
-    try {
-      const specifier = "tsx/esm/api";
-      const tsx = (await import(specifier)) as { register?: () => void };
-      tsx.register?.();
-      tsxRegistered = true;
-    } catch {
+    if (!(await registerTsx())) {
       throw new ScreencastError(
         `Cannot load ${file}: this Node cannot run TypeScript directly`,
         "TS_LOADER_MISSING",
-        ["Install the loader: `pnpm add -D tsx`", "Or write the file as .mjs instead of .ts"],
+        [
+          "Install the loader in this project: `pnpm add -D tsx`",
+          "Or write the file as .mjs instead of .ts",
+        ],
       );
     }
     // Cache-bust so the retry does not get the failed module record back.
-    return (await import(`${url}?tsx=1`)) as Record<string, unknown>;
+    return unwrapModule((await import(`${url}?tsx=1`)) as Record<string, unknown>);
   }
 }
 
@@ -304,7 +364,10 @@ export async function loadScenarioFiles(files: readonly string[]): Promise<Loade
 
   for (const file of files) {
     const module = await importModule(file);
-    const found = Object.values(module).filter(isScenario);
+    // Deduped by identity: CJS interop exposes the same object under both
+    // `default` and `module.exports`, and one scenario seen twice is not two
+    // scenarios sharing an id.
+    const found = [...new Set(Object.values(module).filter(isScenario))];
 
     if (found.length === 0) {
       throw new ScreencastError(`No scenario exported by ${file}`, "NO_SCENARIO", [

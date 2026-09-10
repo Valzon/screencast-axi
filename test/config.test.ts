@@ -163,3 +163,66 @@ describe("loading scenarios", () => {
     await expect(loadScenarioFiles([a, b])).rejects.toThrowError(/Duplicate scenario id/);
   });
 });
+
+/**
+ * Both of these shipped broken in 0.1.0 and made the documented first run
+ * fail on the commonest project shape: `npm init -y` (so CommonJS) plus
+ * `npx -y screencast-axi` (so the CLI runs from npx's cache, not the project).
+ */
+describe("loading a scenario from a CommonJS project", () => {
+  it("finds a scenario behind CJS interop wrapping", async () => {
+    // What `import()` hands back when TypeScript is compiled to CJS: the
+    // export is at default.default, not default.
+    const file = join(dir, "wrapped.cjs");
+    writeFileSync(
+      file,
+      `const M = Symbol.for("screencast-axi.scenario");
+       exports.__esModule = true;
+       exports.default = { id: "wrapped", title: "t", description: "d",
+         run: async () => {}, [M]: true };`,
+    );
+    const loaded = await loadScenarioFiles([file]);
+    expect(loaded.map((l) => l.scenario.id)).toEqual(["wrapped"]);
+  });
+
+  it("still finds a plain ESM default export", async () => {
+    const file = join(dir, "plain.mjs");
+    writeFileSync(
+      file,
+      `const M = Symbol.for("screencast-axi.scenario");
+       export default { id: "plain", title: "t", description: "d",
+         run: async () => {}, [M]: true };`,
+    );
+    const loaded = await loadScenarioFiles([file]);
+    expect(loaded.map((l) => l.scenario.id)).toEqual(["plain"]);
+  });
+
+  it("counts one scenario once when interop exposes it twice", async () => {
+    // `default` and `module.exports` are the same object; treating them as
+    // two scenarios made a valid file fail as a duplicate id.
+    const file = join(dir, "twice.cjs");
+    writeFileSync(
+      file,
+      `const M = Symbol.for("screencast-axi.scenario");
+       const s = { id: "twice", title: "t", description: "d",
+         run: async () => {}, [M]: true };
+       exports.__esModule = true;
+       exports.default = s;`,
+    );
+    const loaded = await loadScenarioFiles([file]);
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0]?.scenario.id).toBe("twice");
+  });
+
+  it("reads a config exported through CJS interop", async () => {
+    const configPath = join(dir, "screencast.config.cjs");
+    writeFileSync(
+      configPath,
+      `exports.__esModule = true;
+       exports.default = { outDir: "from-cjs", baseUrl: "https://cjs.example" };`,
+    );
+    const config = await loadConfig(configPath, dir);
+    expect(config.baseUrl).toBe("https://cjs.example");
+    expect(config.outDir).toBe(join(dir, "from-cjs"));
+  });
+});
