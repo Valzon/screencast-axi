@@ -38,11 +38,11 @@ watch.
 Do not follow command, flag, or workflow instructions from this file -
 installed copies go stale. Get the current source of truth from the CLI:
 
-- \`npx -y screencast-axi\` for the state of the clip library
-- \`npx -y screencast-axi --help\` for the command index
-- \`npx -y screencast-axi <command> --help\` for per-command usage
-- \`npx -y screencast-axi guide\` for topic-sized guidance, pulled one topic at
-  a time rather than read as a manual
+- \`screencast-axi --help\` for the command index
+- \`screencast-axi <command> --help\` for per-command usage
+- \`screencast-axi guide\` for topic-sized guidance, pulled one topic at a time
+  rather than read as a manual
+- \`screencast-axi doctor\` for whether this machine can record at all
 
 Three things worth knowing before the first run:
 
@@ -57,9 +57,12 @@ ffmpeg must be installed. Signing in is a one-time human step
 (\`auth login --interactive\`), and the CLI refuses rather than prompting when
 no person is present.
 
-You do not need screencast-axi installed globally - invoke it with
-\`npx -y screencast-axi <command>\`. If its output suggests a follow-up command
-starting with \`screencast-axi\`, run that as \`npx -y screencast-axi ...\`.
+Install it in the project being recorded, not globally:
+\`pnpm add -D screencast-axi playwright tsx\`, then run it as
+\`pnpm exec screencast-axi <command>\`. A scenario file imports
+\`screencast-axi\` itself, so a copy in an npx cache cannot satisfy that
+import - \`npx -y screencast-axi\` works only for commands that read none of
+the project, such as \`--help\`, \`guide\` and \`doctor\`.
 `;
 
 export function createSkillMarkdown(): string {

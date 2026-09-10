@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { platform } from "node:os";
+import { importFromProject } from "./resolve.js";
 
 /**
  * Locating the external encoders, and deciding how to make a poster.
@@ -75,18 +76,17 @@ export async function resolveFfmpeg(): Promise<BinaryInfo | null> {
   const override = process.env[FFMPEG_ENV];
   if (override) return probe(override, "env");
 
-  try {
-    // Computed specifier on purpose: this package is deliberately absent
-    // unless someone opted into it, so TypeScript must not try to resolve it.
-    const specifier = "ffmpeg-static";
-    const mod = (await import(specifier)) as { default?: unknown };
-    const bundled = typeof mod.default === "string" ? mod.default : null;
-    if (bundled) {
-      const found = await probe(bundled, "ffmpeg-static");
-      if (found) return found;
-    }
-  } catch {
-    // Not installed. Expected: it is an opt-in convenience, not a dependency.
+  // Resolved from the project, like tsx and Playwright: `ffmpeg-static` is a
+  // dependency the consumer opted into, and a CLI running from an npx cache
+  // has none of theirs. Getting this wrong reports ffmpeg missing to exactly
+  // the people who installed it precisely so it would not be.
+  const bundled = await importFromProject<{ default?: unknown }>(
+    "ffmpeg-static",
+    (module) => typeof module.default === "string",
+  );
+  if (typeof bundled?.default === "string") {
+    const found = await probe(bundled.default, "ffmpeg-static");
+    if (found) return found;
   }
 
   return probe("ffmpeg", "path");

@@ -12,8 +12,90 @@ conventions, so an agent can drive it as comfortably as a person can.
 <sup>The ask, the scenario that came back, and the take it produced - itself recorded by this tool,
 from [`demo/scenarios/demo.ts`](demo/scenarios/demo.ts). Re-record it with `pnpm demo`.</sup>
 
-> **Status: 0.x and not yet published.** The recorder works end to end; the command surface is
-> still growing. See [Roadmap](#roadmap).
+[![npm](https://img.shields.io/npm/v/screencast-axi)](https://www.npmjs.com/package/screencast-axi)
+
+> **Status: 0.x.** On npm and working end to end, but the API can still move between minor
+> versions. See [Roadmap](#roadmap).
+
+## Install
+
+Install it in the project you are recording from, alongside Playwright:
+
+```sh
+pnpm add -D screencast-axi playwright tsx
+pnpm exec playwright install chromium
+```
+
+> **Why not `npx`?** A scenario file starts with `import { defineScenario } from "screencast-axi"`.
+> That import sits in _your_ file and resolves from _your_ project, so a copy of the package living
+> in an npx cache cannot satisfy it. `npx -y screencast-axi` is fine for commands that read nothing
+> of yours - `doctor`, `guide`, `--help` - and cannot work for `rehearse` or `record`.
+
+`tsx` is what lets Node read a TypeScript scenario. Skip it only if you write scenarios as `.mjs`.
+
+To let an agent drive it, add the skill as well:
+
+```sh
+npx skills add Valzon/screencast-axi --skill screencast-axi -g
+```
+
+## Quick start
+
+No config needed. Point it at any site:
+
+```sh
+pnpm exec screencast-axi scaffold product-tour --url https://example.com
+# fill in the run() body
+pnpm exec screencast-axi rehearse ./scenarios/product-tour.ts
+pnpm exec screencast-axi record   ./scenarios/product-tour.ts
+```
+
+`rehearse` runs the scenario without encoding, so a stale selector surfaces in seconds rather than
+a minute - and the failure comes back with the URL it reached, a screenshot, and what each part of
+the selector actually matched.
+
+A scenario is TypeScript:
+
+```ts
+import { defineScenario } from "screencast-axi";
+
+export default defineScenario({
+  id: "product-tour",
+  title: "A three-stop tour",
+  description: "The pages that matter, in order.",
+  steps: ["Where the work lives", "How it gets organised", "And what comes out"],
+
+  async run(d) {
+    await d.tour([
+      { path: "/", step: 0, scroll: 0.6 },
+      { path: "/features", step: 1, scroll: 0.5 },
+      { path: "/pricing", step: 2 },
+    ]);
+  },
+});
+```
+
+Each line in `steps` goes on screen once, in order. The same array becomes the burnt-in caption
+and the manifest's step list, so the written workflow cannot drift from the recorded one - a take
+that skips a line fails.
+
+## Prerequisites
+
+| Piece       | Required | How it is found                                                      |
+| ----------- | -------- | -------------------------------------------------------------------- |
+| Node        | >= 20    |                                                                      |
+| Chromium    | yes      | Playwright downloads it                                              |
+| `ffmpeg`    | yes      | `$SCREENCAST_FFMPEG`, then an installed `ffmpeg-static`, then `PATH` |
+| WebP poster | optional | ffmpeg's `libwebp`, else `cwebp`, else a PNG poster                  |
+
+ffmpeg is not bundled: it is 80MB+ per platform, and _which_ build you have matters - many builds
+(Homebrew's among them) ship without `libwebp`, which is why the poster has a fallback chain
+rather than one hard requirement. If you would rather not install it system-wide,
+`pnpm add -D ffmpeg-static` and the cascade finds it.
+
+**Platforms:** macOS and Linux are tested, including in CI. Windows is intended to work but is
+**unverified** - the known risks are argument quoting in spawned ffmpeg filter strings, path
+separators inside those arguments, and Chrome's lock on a persistent profile directory.
 
 ## What the tool does
 
@@ -180,79 +262,13 @@ hold on each caption - and constants only help if you can run the same thing aga
 same thing back. A scenario file survives a product change, gets reviewed in a pull request, and
 can be re-cut at a different length without re-deciding anything.
 
-## Quick start
-
-No config needed. Point it at any site:
-
-```sh
-npx -y screencast-axi scaffold product-tour --url https://example.com
-# fill in the run() body
-npx -y screencast-axi rehearse ./scenarios/product-tour.ts
-npx -y screencast-axi record   ./scenarios/product-tour.ts
-```
-
-`rehearse` runs the scenario without encoding, so a stale selector surfaces in seconds rather than
-a minute - and the failure comes back with the URL it reached, a screenshot, and what each part of
-the selector actually matched.
-
-A scenario is TypeScript:
-
-```ts
-import { defineScenario } from "screencast-axi";
-
-export default defineScenario({
-  id: "product-tour",
-  title: "A three-stop tour",
-  description: "The pages that matter, in order.",
-  steps: ["Where the work lives", "How it gets organised", "And what comes out"],
-
-  async run(d) {
-    await d.tour([
-      { path: "/", step: 0, scroll: 0.6 },
-      { path: "/features", step: 1, scroll: 0.5 },
-      { path: "/pricing", step: 2 },
-    ]);
-  },
-});
-```
-
-Each line in `steps` goes on screen once, in order. The same array becomes the burnt-in caption
-and the manifest's step list, so the written workflow cannot drift from the recorded one - a take
-that skips a line fails.
-
-## Install
-
-The skill is installed from GitHub; the CLI is pulled on demand, so there is nothing global:
-
-```sh
-npx skills add Valzon/screencast-axi --skill screencast-axi -g
-```
-
-## Prerequisites
-
-| Piece       | Required | How it is found                                                      |
-| ----------- | -------- | -------------------------------------------------------------------- |
-| Node        | >= 20    |                                                                      |
-| Chromium    | yes      | Playwright downloads it                                              |
-| `ffmpeg`    | yes      | `$SCREENCAST_FFMPEG`, then an installed `ffmpeg-static`, then `PATH` |
-| WebP poster | optional | ffmpeg's `libwebp`, else `cwebp`, else a PNG poster                  |
-
-ffmpeg is not bundled: it is 80MB+ per platform, and _which_ build you have matters - many builds
-(Homebrew's among them) ship without `libwebp`, which is why the poster has a fallback chain
-rather than one hard requirement. If you would rather not install it system-wide,
-`pnpm add -D ffmpeg-static` and the cascade finds it.
-
-**Platforms:** macOS and Linux are tested, including in CI. Windows is intended to work but is
-**unverified** - the known risks are argument quoting in spawned ffmpeg filter strings, path
-separators inside those arguments, and Chrome's lock on a persistent profile directory.
-
 ## Recording a page behind a login
 
 The strategy that needs no code for the site you are recording is `profileAuth()`. A person runs
 this once:
 
 ```sh
-npx -y screencast-axi auth login --interactive
+pnpm exec screencast-axi auth login --interactive
 ```
 
 A browser opens, they sign in however that site wants - OAuth, SSO, a magic link, two-factor - and
@@ -536,8 +552,9 @@ _No flags._
 
 ## Roadmap
 
-Publishing to npm. The command surface is complete; `setup hooks` is declared but not implemented
-and says so rather than pretending.
+`setup hooks` is declared but not implemented, and says so rather than pretending. Beyond that:
+encoding animated WebP directly from frames rather than through the GIF pass, which measures
+around five times smaller for the same clip.
 
 ## Contributing
 
