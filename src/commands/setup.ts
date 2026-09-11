@@ -1,6 +1,5 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
-import { installHooks } from "../hooks.js";
 import { ScreencastError } from "../errors.js";
 import { parseFlags, type FlagSpecs } from "../flags.js";
 import type { AxiStructuredOutput } from "../output.js";
@@ -9,7 +8,6 @@ import { CONFIG_BASENAMES } from "../config.js";
 
 export const SETUP_FLAGS: FlagSpecs = {
   "browsers-only": { kind: "boolean", description: "Install Chromium and stop" },
-  scope: { kind: "string", description: "For `setup hooks`: user or project", placeholder: "s" },
 };
 
 export const INIT_FLAGS: FlagSpecs = {
@@ -29,13 +27,10 @@ export const INIT_FLAGS: FlagSpecs = {
 export async function setupCommand(args: string[]): Promise<AxiStructuredOutput> {
   const { positionals, flags } = parseFlags(args, SETUP_FLAGS);
 
-  if (positionals[0] === "hooks") {
-    return installHooks(flags["scope"] as string | undefined);
-  }
   if (positionals[0]) {
     throw new ScreencastError(`Unknown setup target: ${positionals[0]}`, "VALIDATION_ERROR", [
-      "`screencast-axi setup` installs the browser and checks the rest",
-      "`screencast-axi setup hooks` registers the session integration",
+      "`screencast-axi setup` takes no arguments: it installs the browser and checks the rest",
+      "`--browsers-only` installs Chromium and stops",
     ]);
   }
 
