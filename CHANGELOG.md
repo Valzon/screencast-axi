@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.2](https://github.com/Valzon/screencast-axi/compare/v0.1.1...v0.1.2) (2026-09-11)
+
+
+### Bug Fixes
+
+* find the project's Playwright, and say so when a file imports us ([b6c5f95](https://github.com/Valzon/screencast-axi/commit/b6c5f95c2591af24d696af82e52ac7a4de2086cf))
+* resolve ffmpeg-static from the project, and document an install that works ([8c238e0](https://github.com/Valzon/screencast-axi/commit/8c238e072d5934e10586515aa24d565aeeedbfeb))
+
 ## [0.1.1](https://github.com/Valzon/screencast-axi/compare/v0.1.0...v0.1.1) (2026-09-10)
 
 
