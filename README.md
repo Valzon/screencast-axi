@@ -14,9 +14,6 @@ from [`demo/scenarios/demo.ts`](demo/scenarios/demo.ts). Re-record it with `pnpm
 
 [![npm](https://img.shields.io/npm/v/screencast-axi)](https://www.npmjs.com/package/screencast-axi)
 
-> **Status: 0.x.** On npm and working end to end, but the API can still move between minor
-> versions. See [Roadmap](#roadmap).
-
 ## Install
 
 Two ways, and which one fits depends on how often you record.
@@ -27,6 +24,15 @@ the types:
 ```sh
 pnpm add -D screencast-axi playwright tsx
 pnpm exec playwright install chromium
+```
+
+pnpm 11 refuses to run a dependency's install script until you allow it, and `tsx` brings
+`esbuild`, which needs its script to place a binary. Run `pnpm approve-builds` and pick `esbuild`,
+or put the same thing in `pnpm-workspace.yaml`:
+
+```yaml
+allowBuilds:
+  esbuild: true
 ```
 
 **A one-off, or a repo that should not carry the tool** - run it through `npx` and install nothing
@@ -174,6 +180,10 @@ site's own `@media (hover: none)` and touch rules apply at all, and it carries t
 agent - so this is the mobile layout the site actually serves, not a desktop squeezed narrow.
 Playwright ships 140+ presets; `--viewport 390x844` covers the rest.
 
+```sh
+screencast-axi record onboarding --device "iPhone 13" --orientation portrait
+```
+
 <picture>
   <source srcset="docs/usecase-mobile.anim.webp" type="image/webp">
   <img src="docs/usecase-mobile.gif" alt="The same workflow recorded in a portrait phone viewport." width="240">
@@ -278,20 +288,14 @@ can be re-cut at a different length without re-deciding anything.
 
 ## Recording a page behind a login
 
-The strategy that needs no code for the site you are recording is `profileAuth()`. A person runs
-this once:
+`profileAuth()` needs no code for the site you are recording. A person runs this once:
 
 ```sh
 pnpm exec screencast-axi auth login --interactive
 ```
 
-A browser opens, they sign in however that site wants - OAuth, SSO, a magic link, two-factor - and
-close the window. The session lives in a persistent Chrome profile and every take reuses it. No
-credential is handled by this package.
-
-`auth login` never reads stdin, so an agent can open the window on the user's screen rather than
-making them retype a command. It cannot hang: the wait is bounded, and it refuses up front where
-no window could appear.
+A browser opens, they sign in however that site wants and close the window. The session lives in
+a persistent Chrome profile, every take reuses it, and `auth check` tells you when it has expired.
 
 Also shipped: `storageStateAuth({ path })` for a portable session file, and
 `basicAuth({ username, password })` for staging environments. Anything else is an `AuthStrategy`
@@ -299,20 +303,6 @@ object written in the config - typed and debuggable rather than a shelled-out sc
 
 > A scenario that creates or drags something **writes to whatever it is pointed at**. Prefer
 > read-only scenarios against production, or point at staging.
-
-## Seeing what a scenario does
-
-A scenario is arbitrary code driving a real browser, often one signed into your own account, so
-"what will this actually do" deserves a better answer than "read the TypeScript". Two:
-
-```sh
-screencast-axi rehearse <id>            # prints every action it took
-screencast-axi rehearse <id> --headed   # and shows you it happening
-```
-
-A rehearsal prints `performed` - every goto, click, typed value, drag and scroll, in order, with
-timings - and `hosts`, the short answer to where the script went. `--headed` opens a real window
-and does not change the output; the clip is identical either way.
 
 ## Output formats
 
@@ -358,19 +348,6 @@ export default defineConfig({
 
 Relative paths resolve against the config file, never the shell's working directory, so a command
 means the same thing from anywhere in a repo.
-
-## Mobile, and aiming at a length
-
-```sh
-screencast-axi record tour --device "iPhone 13" --orientation portrait --duration 20s
-```
-
-Device presets come from Playwright's registry, so a phone clip is captured at its real device
-pixels rather than its CSS viewport - the difference between readable UI text and a smear.
-
-`--duration` runs one measuring pass, then solves for the pace that lands near the target. A take
-is `fixed + pace x scalable`: the site's own waits do not get slower because the recorder does, so
-the solve uses the measured split rather than assuming everything scales.
 
 ## Reading the manifest
 
@@ -531,10 +508,9 @@ Install the browser; name anything you must install yourself.
 screencast-axi setup
 ```
 
-| Flag              | What it does                        |
-| ----------------- | ----------------------------------- |
-| `--browsers-only` | Install Chromium and stop.          |
-| `--scope <s>`     | For `setup hooks`: user or project. |
+| Flag              | What it does               |
+| ----------------- | -------------------------- |
+| `--browsers-only` | Install Chromium and stop. |
 
 #### `auth`
 
@@ -563,12 +539,6 @@ screencast-axi guide [topic]
 
 _No flags._
 <!-- reference:end -->
-
-## Roadmap
-
-`setup hooks` is declared but not implemented, and says so rather than pretending. Beyond that:
-encoding animated WebP directly from frames rather than through the GIF pass, which measures
-around five times smaller for the same clip.
 
 ## Contributing
 
