@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/Valzon/screencast-axi/compare/v0.1.2...v0.1.3) (2026-09-11)
+
+
+### Features
+
+* record from a project that has not installed the package ([22d2940](https://github.com/Valzon/screencast-axi/commit/22d2940803a87440320eccb4d09696398a94c6aa))
+
 ## [0.1.2](https://github.com/Valzon/screencast-axi/compare/v0.1.1...v0.1.2) (2026-09-11)
 
 
