@@ -26,11 +26,19 @@ function titleFrom(id: string): string {
  * This is what makes a TypeScript-only authoring format cheap: the author -
  * often an agent - supplies only the `run()` body and the narration, not the
  * imports, the id or the shape.
+ *
+ * The skeleton imports only a type and exports a plain object checked with
+ * `satisfies`. `defineScenario` would give the same editor experience, but it
+ * is a runtime import - and a runtime import inside the user's file resolves
+ * from the user's project, so it breaks every run that has not installed the
+ * package there, `npx` first among them.
  */
 function template(id: string, title: string, url: string, device?: string): string {
-  return `import { defineScenario } from "screencast-axi";
+  return `// A type-only import: erased when this file is compiled, so it loads whether
+// or not the project has screencast-axi installed - under npx included.
+import type { Scenario } from "screencast-axi";
 
-export default defineScenario({
+export default {
   id: ${JSON.stringify(id)},
   title: ${JSON.stringify(title)},
   description: "TODO: one line describing what this clip shows.",
@@ -50,7 +58,7 @@ export default defineScenario({
 
     await d.step(1, 1200);
   },
-});
+} satisfies Scenario;
 `;
 }
 
@@ -63,9 +71,11 @@ function tourTemplate(
 ): string {
   const paths = ["/", "/pricing", "/docs", "/blog", "/contact"];
   const chosen = Array.from({ length: stops }, (_, i) => paths[i] ?? `/page-${i + 1}`);
-  return `import { defineScenario } from "screencast-axi";
+  return `// A type-only import: erased when this file is compiled, so it loads whether
+// or not the project has screencast-axi installed - under npx included.
+import type { Scenario } from "screencast-axi";
 
-export default defineScenario({
+export default {
   id: ${JSON.stringify(id)},
   title: ${JSON.stringify(title)},
   description: "TODO: one line describing what this walkthrough shows.",
@@ -86,7 +96,7 @@ ${chosen
   )
   .join("\n\n")}
   },
-});
+} satisfies Scenario;
 `;
 }
 

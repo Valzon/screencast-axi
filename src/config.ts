@@ -5,7 +5,13 @@ import { pathToFileURL } from "node:url";
 import { DEFAULT_ENCODE_SETTINGS, type EncodeSettings } from "./encode.js";
 import { DEFAULT_SETTLE_MS } from "./director.js";
 import { DEFAULT_OVERLAY_THEME, type DeepPartial, type OverlayTheme } from "./overlay.js";
-import { isScenario, type DefinedScenario, type Viewport } from "./types.js";
+import {
+  defineScenario,
+  isScenario,
+  looksLikeScenario,
+  type DefinedScenario,
+  type Viewport,
+} from "./types.js";
 import { importFromProject } from "./resolve.js";
 import { noAuth } from "./auth/strategies.js";
 import type { AuthConfig, AuthStrategy } from "./auth/types.js";
@@ -213,8 +219,9 @@ function selfImportFailure(file: string, error: unknown): ScreencastError | null
     `Cannot load ${file}: it imports \`${SELF}\`, which this project does not have`,
     "SELF_NOT_INSTALLED",
     [
-      `Install it beside the file that imports it: \`pnpm add -D ${SELF}\``,
-      "Running the CLI through `npx` leaves the package in a cache the file cannot reach",
+      `Import only types, so nothing is resolved at runtime: \`import type { Scenario } from "${SELF}"\` and \`export default { ... } satisfies Scenario\``,
+      `Or install it beside the file that imports it: \`pnpm add -D ${SELF}\``,
+      "Running the CLI through `npx` leaves the package in a cache a runtime import cannot reach",
     ],
   );
 }
@@ -380,15 +387,32 @@ export async function loadScenarioFiles(files: readonly string[]): Promise<Loade
 
   for (const file of files) {
     const module = await importModule(file);
+
+    // A stamped scenario is found in any export position. An unstamped one is
+    // accepted only as the default export - after CJS interop that may sit at
+    // `default.default` - so a file needs no runtime import of this package.
+    const defaults = [
+      module["default"],
+      module["default.default"],
+      module["module.exports.default"],
+    ];
+    const candidates: DefinedScenario[] = [
+      ...Object.values(module).filter(isScenario),
+      ...defaults
+        .filter((v) => !isScenario(v) && looksLikeScenario(v))
+        .map((v) => v as DefinedScenario),
+    ];
+
     // Deduped by identity: CJS interop exposes the same object under both
     // `default` and `module.exports`, and one scenario seen twice is not two
     // scenarios sharing an id.
-    const found = [...new Set(Object.values(module).filter(isScenario))];
+    const found = [...new Set(candidates)].map((s) => (isScenario(s) ? s : defineScenario(s)));
 
     if (found.length === 0) {
       throw new ScreencastError(`No scenario exported by ${file}`, "NO_SCENARIO", [
-        "Wrap the object: `export default defineScenario({ ... })`",
-        "`defineScenario` is imported from `screencast-axi`",
+        "Make it the default export: `export default { id, title, description, run } satisfies Scenario`",
+        'Type it with `import type { Scenario } from "screencast-axi"`, which leaves no runtime import',
+        "Or wrap a named export: `export const clip = defineScenario({ ... })`",
       ]);
     }
 

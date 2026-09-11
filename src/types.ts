@@ -87,6 +87,32 @@ export function defineScenario(scenario: Scenario): DefinedScenario {
   return { ...scenario, [SCENARIO_MARKER]: true };
 }
 
+/**
+ * Whether a value has the shape of a scenario, stamped or not.
+ *
+ * This is what lets a scenario file carry no runtime import of this package:
+ * `import type { Scenario } from "screencast-axi"` is erased when the file is
+ * compiled, and `export default { ... } satisfies Scenario` is a plain object.
+ * The file then loads in a project that has not installed the package at all -
+ * which is what `npx` needs, because a runtime import inside the user's file
+ * resolves from the user's project, where npx's copy cannot be found.
+ *
+ * Only ever applied to a module's *default* export. A named export still needs
+ * the `defineScenario` stamp, so a helper object that happens to have an `id`
+ * and a `run` is never mistaken for a clip.
+ */
+export function looksLikeScenario(value: unknown): value is Scenario {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v["id"] === "string" &&
+    v["id"].length > 0 &&
+    typeof v["title"] === "string" &&
+    typeof v["description"] === "string" &&
+    typeof v["run"] === "function"
+  );
+}
+
 export function isScenario(value: unknown): value is DefinedScenario {
   return (
     typeof value === "object" &&

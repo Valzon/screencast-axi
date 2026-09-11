@@ -257,3 +257,65 @@ describe("a file that imports this package", () => {
     expect((error as { code?: string }).code).not.toBe("SELF_NOT_INSTALLED");
   });
 });
+
+/**
+ * A scenario file with no runtime import of this package: a type-only import,
+ * erased at compile time, and a plain default export. It loads in a project
+ * that never installed screencast-axi - which is the only way `npx` can work,
+ * since a runtime import inside the user's file resolves from their project.
+ */
+describe("plain default-export scenarios", () => {
+  const PLAIN = (id: string) => `
+    export default { id: ${JSON.stringify(id)}, title: "t", description: "d",
+      steps: ["one"], run: async () => {} };`;
+
+  it("accepts an unstamped default export with a scenario's shape", async () => {
+    const file = join(dir, "plain-default.mjs");
+    writeFileSync(file, PLAIN("plain-default"));
+    const loaded = await loadScenarioFiles([file]);
+    expect(loaded.map((l) => l.scenario.id)).toEqual(["plain-default"]);
+    // Normalised, so everything downstream sees one kind of scenario.
+    expect(loaded[0]?.scenario[Symbol.for("screencast-axi.scenario") as never]).toBe(true);
+  });
+
+  it("finds it behind CommonJS interop too", async () => {
+    const file = join(dir, "plain-cjs.cjs");
+    writeFileSync(
+      file,
+      `exports.__esModule = true;
+       exports.default = { id: "plain-cjs", title: "t", description: "d", run: async () => {} };`,
+    );
+    const loaded = await loadScenarioFiles([file]);
+    expect(loaded.map((l) => l.scenario.id)).toEqual(["plain-cjs"]);
+  });
+
+  it("does not duck-type a named export", async () => {
+    // A helper that happens to have an id and a run is not a clip. Named
+    // exports still need the defineScenario stamp.
+    const file = join(dir, "named-helper.mjs");
+    writeFileSync(
+      file,
+      `export const helper = { id: "x", title: "t", description: "d", run: async () => {} };`,
+    );
+    await expect(loadScenarioFiles([file])).rejects.toThrowError(/No scenario exported/);
+  });
+
+  it("rejects a default export that is missing required fields", async () => {
+    const file = join(dir, "incomplete.mjs");
+    writeFileSync(file, `export default { id: "incomplete", run: async () => {} };`);
+    await expect(loadScenarioFiles([file])).rejects.toThrowError(/No scenario exported/);
+  });
+
+  it("still takes a stamped and a plain scenario from one project", async () => {
+    const stamped = join(dir, "stamped.mjs");
+    writeFileSync(
+      stamped,
+      `const M = Symbol.for("screencast-axi.scenario");
+       export default { id: "stamped", title: "t", description: "d", run: async () => {}, [M]: true };`,
+    );
+    const plain = join(dir, "plain.mjs");
+    writeFileSync(plain, PLAIN("plain"));
+    const loaded = await loadScenarioFiles([stamped, plain]);
+    expect(loaded.map((l) => l.scenario.id)).toEqual(["stamped", "plain"]);
+  });
+});

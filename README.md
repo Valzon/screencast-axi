@@ -19,17 +19,28 @@ from [`demo/scenarios/demo.ts`](demo/scenarios/demo.ts). Re-record it with `pnpm
 
 ## Install
 
-Install it in the project you are recording from, alongside Playwright:
+Two ways, and which one fits depends on how often you record.
+
+**Recording regularly** - install it in the project, so the commands are short and your editor has
+the types:
 
 ```sh
 pnpm add -D screencast-axi playwright tsx
 pnpm exec playwright install chromium
 ```
 
-> **Why not `npx`?** A scenario file starts with `import { defineScenario } from "screencast-axi"`.
-> That import sits in _your_ file and resolves from _your_ project, so a copy of the package living
-> in an npx cache cannot satisfy it. `npx -y screencast-axi` is fine for commands that read nothing
-> of yours - `doctor`, `guide`, `--help` - and cannot work for `rehearse` or `record`.
+**A one-off, or a repo that should not carry the tool** - run it through `npx` and install nothing
+in the project at all:
+
+```sh
+npx -y -p screencast-axi -p playwright -p tsx screencast-axi record ./scenarios/product-tour.ts
+```
+
+The one rule that makes the second form work: a scenario imports only **types** from the package.
+`import type` is erased when the file is compiled, so nothing is resolved from your project at
+runtime - which is what an npx cache cannot provide. `scaffold` writes files that way already. A
+runtime import (`import { defineScenario } from "screencast-axi"`) resolves from _your_ project
+and needs the first form.
 
 `tsx` is what lets Node read a TypeScript scenario. Skip it only if you write scenarios as `.mjs`.
 
@@ -54,12 +65,12 @@ pnpm exec screencast-axi record   ./scenarios/product-tour.ts
 a minute - and the failure comes back with the URL it reached, a screenshot, and what each part of
 the selector actually matched.
 
-A scenario is TypeScript:
+A scenario is TypeScript, and a plain object:
 
 ```ts
-import { defineScenario } from "screencast-axi";
+import type { Scenario } from "screencast-axi";
 
-export default defineScenario({
+export default {
   id: "product-tour",
   title: "A three-stop tour",
   description: "The pages that matter, in order.",
@@ -72,12 +83,15 @@ export default defineScenario({
       { path: "/pricing", step: 2 },
     ]);
   },
-});
+} satisfies Scenario;
 ```
 
-Each line in `steps` goes on screen once, in order. The same array becomes the burnt-in caption
-and the manifest's step list, so the written workflow cannot drift from the recorded one - a take
-that skips a line fails.
+`satisfies` keeps full typing - `d` is a `Director`, and a typo such as `d.gotoo` fails the
+typecheck with a suggestion. Each line in `steps` goes on screen once, in order. The same array
+becomes the burnt-in caption and the manifest's step list, so the written workflow cannot drift
+from the recorded one - a take that skips a line fails.
+
+`defineScenario` still exists for a scenario exported under a name rather than as the default.
 
 ## Prerequisites
 
