@@ -44,9 +44,8 @@ ffmpeg must be installed. Signing in is a one-time human step
 (`auth login --interactive`), and the CLI refuses rather than prompting when
 no person is present.
 
-Install it in the project being recorded, not globally:
-`pnpm add -D screencast-axi playwright tsx`, then run it as
-`pnpm exec screencast-axi <command>`. A scenario file imports
-`screencast-axi` itself, so a copy in an npx cache cannot satisfy that
-import - `npx -y screencast-axi` works only for commands that read none of
-the project, such as `--help`, `guide` and `doctor`.
+No install needed: `npx -y -p screencast-axi -p playwright -p tsx screencast-axi
+<command>` works from any project, provided scenarios import only types
+(`import type { Scenario }` plus `export default {...} satisfies Scenario`), as
+`scaffold` writes them. For regular use, `pnpm add -D screencast-axi playwright
+tsx` shortens that to `pnpm exec screencast-axi`.
