@@ -35,6 +35,15 @@ export interface DirectorAction {
   readonly target?: string;
   /** Typed text, a key, a distance - whatever makes the line readable. */
   readonly detail?: string;
+  /**
+   * Where the page was when this action *began*.
+   *
+   * A failure is captured once the page has stopped moving, so a scenario that
+   * clicked through a redirect is photographed on the page it ended up on -
+   * which can look perfectly healthy and is not what the browser was looking
+   * at when the wait was issued. Kept per action so the two can be compared.
+   */
+  readonly url?: string;
 }
 
 /** Default ceiling on the post-navigation settle wait. */
@@ -76,6 +85,14 @@ export class Director {
   private pointer = { x: 0, y: 0 };
   /** ms since the context was created, at the moment the clip proper began. */
   private clipStartedAt: number | null = null;
+  /**
+   * Set when the clip was marked as starting on a page with nothing on it.
+   *
+   * Holds the action count at that moment, so only the scenario's *opening*
+   * navigation may move the start - a `goto` further in is a cut the clip is
+   * meant to show, not dead air at the head of it.
+   */
+  private blankUntil: number | null = null;
   /** Indices passed to {@link step}, in the order the take showed them. */
   private readonly shown: number[] = [];
   /**
@@ -109,9 +126,19 @@ export class Director {
     return Math.max(0, (this.clipStartedAt - this.contextCreatedAt) / 1000);
   }
 
-  /** Marks the end of setup. Everything before this is trimmed off the clip. */
-  markClipStart(): void {
+  /**
+   * Marks the end of setup. Everything before this is trimmed off the clip.
+   *
+   * `painted` says whether there is anything on screen yet. There is not when
+   * a scenario does all its own navigating, which is the common shape and the
+   * one `scaffold` writes - and the clip then opened on the blank page the
+   * context starts at, which is also the frame the poster is cut from. A page
+   * that shows a white rectangle until the video decodes is the one frame
+   * every visitor is guaranteed to see.
+   */
+  markClipStart(painted: boolean): void {
     this.clipStartedAt = Date.now();
+    this.blankUntil = painted ? null : this.actions.length;
   }
 
   private scaled(ms: number): number {
@@ -136,12 +163,23 @@ export class Director {
   }
 
   private record(kind: DirectorAction["kind"], target?: Target | string, detail?: string): void {
+    const url = this.urlNow();
     this.actions.push({
       atMs: Date.now() - this.contextCreatedAt,
       kind,
       ...(target !== undefined ? { target: describeTarget(target) } : {}),
       ...(detail !== undefined ? { detail } : {}),
+      ...(url ? { url } : {}),
     });
+  }
+
+  /** The page's URL, or nothing if the page is in no state to answer. */
+  private urlNow(): string | undefined {
+    try {
+      return this.page.url();
+    } catch {
+      return undefined;
+    }
   }
 
   /** A deliberate pause so the viewer can read what just happened. */
@@ -151,6 +189,7 @@ export class Director {
 
   async goto(path: string): Promise<void> {
     const url = path.startsWith("http") ? path : new URL(path, this.opts.baseUrl).toString();
+    const opening = this.blankUntil !== null && this.actions.length === this.blankUntil;
     this.record("goto", url);
     await this.page.goto(url, { waitUntil: "domcontentloaded" });
     // Bounded on purpose: see `settleMs`. A page that has not gone quiet in a
@@ -158,6 +197,11 @@ export class Director {
     await this.page
       .waitForLoadState("networkidle", { timeout: this.opts.settleMs ?? DEFAULT_SETTLE_MS })
       .catch(() => undefined);
+
+    // The clip opens here rather than on the blank page this navigation was
+    // issued from. Only for the opening navigation, and only once.
+    if (opening) this.clipStartedAt = Date.now();
+    this.blankUntil = null;
   }
 
   /** Which script lines this take put on screen, in order. */
@@ -518,13 +562,21 @@ function maskOf(text: string): string {
   return `${"\u2022".repeat(Math.min(8, text.length))} (${text.length} chars)`;
 }
 
-/** A target as a short readable string, for the action log. */
+/**
+ * A target as a short readable string, for the action log.
+ *
+ * The log is what someone reads to decide whether a scenario they did not
+ * write is safe to run, so a garbled entry is worse than a plain one. Only the
+ * exact shape `locator('sel')` is unwrapped to its selector; everything else -
+ * a refined locator (`locator('li').nth(2)`), or one of the other builders
+ * (`getByRole('button', { name: 'Go' })`) - is reported exactly as Playwright
+ * prints it. Stripping a trailing bracket off those turned them into broken
+ * syntax that read like a bug in the scenario.
+ */
 function describeTarget(target: Target | string): string {
   if (typeof target === "string") return target;
   if ("x" in target) return `(${Math.round(target.x)}, ${Math.round(target.y)})`;
-  // Playwright locators stringify to something like `locator('.foo')`.
-  return String(target)
-    .replace(/^locator\(/, "")
-    .replace(/\)$/, "")
-    .replace(/^['"]|['"]$/g, "");
+  const printed = String(target);
+  const bare = /^locator\((['"])([\s\S]*)\1\)$/.exec(printed);
+  return bare?.[2] ?? printed;
 }

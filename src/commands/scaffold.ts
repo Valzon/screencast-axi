@@ -54,6 +54,7 @@ export default {
     await d.step(0, 900);
 
     // TODO: drive the page. d.click, d.type, d.drag, d.scrollBy, d.waitFor.
+    // Every method and its options: \`screencast-axi guide scripting\`.
     // Reach past them with d.page for anything they do not cover.
 
     await d.step(1, 1200);
@@ -145,6 +146,7 @@ export function scaffoldCommand(args: string[]): AxiStructuredOutput {
     id,
     help: [
       `Fill in the TODOs in ${relative(process.cwd(), file)}, then run \`screencast-axi rehearse ${relative(process.cwd(), file)}\``,
+      "`screencast-axi guide scripting` lists every director method and its options",
       "Rehearsing runs the scenario without encoding, so a wrong selector shows up in seconds",
       "Record it once it rehearses clean: `screencast-axi record " +
         relative(process.cwd(), file) +

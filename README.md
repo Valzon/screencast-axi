@@ -75,6 +75,9 @@ A clip recorded by path is a first-class clip: the manifest records which file i
 `list`, `show`, `check` and a later `record <id>` all find it without a config listing it. Adding
 a config later is what puts it in `record --all`.
 
+`screencast-axi guide scripting` lists every director method with its options, which is the one
+page worth reading before writing a `run()` body.
+
 A scenario is TypeScript, and a plain object:
 
 ```ts
@@ -262,6 +265,22 @@ Note the password: a field the log would otherwise leak records its shape and no
 so a redirect or a navigation buried in `setup()` shows up too. A list of one host reads very
 differently from a list of nine.
 
+### Waits for a bounded time, and says how long it waited
+
+A rehearsal waits `timeouts.rehearseMs` per action and a take waits `timeouts.actionMs`, eight
+and fifteen seconds by default. Neither is Playwright's thirty-second default: a wrong selector
+is something you hit repeatedly while writing a scenario, and half a minute of waiting plus the
+browser launch behind it is most of a minute per attempt.
+
+That difference cuts both ways, so a rehearsal is not a guarantee. A merely slow selector can
+fail a rehearsal and still record; one that depends on where the page happens to be can pass a
+rehearsal and hang a take. A take that fails on a timeout says which budget applied and how to
+raise it.
+
+A failure also reports where the page was when the step _started_, not only where it ended up.
+They differ whenever a step clicked into a navigation, and the screenshot is always of the second
+page - which can look perfectly healthy and send you looking in the wrong place.
+
 ### Aims a clip at a length
 
 ```sh
@@ -367,6 +386,12 @@ export default {
     accent: "#4f46e5",
     // Page chrome that should not end up in the footage.
     hideSelectors: ["#cookie-banner", "nextjs-portal"],
+  },
+
+  timeouts: {
+    actionMs: 15_000, // per action during a take
+    rehearseMs: 8_000, // per action during a rehearsal, which exists to fail fast
+    settleMs: 2_500, // ceiling on waiting for the network to go quiet after a goto
   },
 } satisfies ScreencastConfig;
 ```

@@ -152,6 +152,17 @@ function formatError(error: unknown): { output: string; exitCode: number } {
         scenario: error.scenarioId,
         phase: error.phase,
         ...(error.lastStep !== null ? { last_step: error.lastStep } : {}),
+        ...(error.lastAction
+          ? {
+              failed_on: [error.lastAction.kind, error.lastAction.target].filter(Boolean).join(" "),
+            }
+          : {}),
+        // Two URLs, because they are often not the same one: see the note in
+        // `buildSuggestions`. Only shown when they differ, so the ordinary
+        // failure stays one line.
+        ...(error.lastAction?.url && error.lastAction.url !== f.url
+          ? { url_when_step_started: error.lastAction.url }
+          : {}),
         ...(f.url ? { url: f.url } : {}),
         ...(f.screenshot ? { screenshot: f.screenshot } : {}),
         ...(f.nearMatches

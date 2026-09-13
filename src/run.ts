@@ -72,6 +72,8 @@ export class ScenarioFailure extends ScreencastError {
   readonly phase: "setup" | "run" | "encode";
   readonly forensics: Forensics;
   readonly lastStep: number | null;
+  /** The action that threw, as the scenario wrote it. */
+  readonly lastAction?: DirectorAction;
 
   constructor(init: {
     scenarioId: string;
@@ -79,6 +81,7 @@ export class ScenarioFailure extends ScreencastError {
     message: string;
     forensics: Forensics;
     lastStep: number | null;
+    lastAction?: DirectorAction;
     suggestions: string[];
   }) {
     super(init.message, "SCENARIO_FAILED", init.suggestions);
@@ -87,6 +90,7 @@ export class ScenarioFailure extends ScreencastError {
     this.phase = init.phase;
     this.forensics = init.forensics;
     this.lastStep = init.lastStep;
+    if (init.lastAction) this.lastAction = init.lastAction;
   }
 }
 
@@ -204,13 +208,14 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
     content: overlayInitScript(resolveOverlayTheme(mergeThemes(config.overlay, scenario.overlay))),
   });
 
-  // A rehearsal exists to fail fast. Playwright's 30s default is right for a
-  // take - a real app can genuinely take that long to settle - but it makes a
-  // rehearsal cost as much as the recording it was meant to replace, which
-  // defeats the point. A take keeps the generous default.
-  if (!recording) {
-    opened.context.setDefaultTimeout(config.timeouts.rehearseMs);
-  }
+  // Both are set, and neither is Playwright's 30s default. A rehearsal exists
+  // to fail fast, so it gets a few seconds. A take waits on a real app and
+  // gets longer - but a wrong selector still costs a bounded wait plus the
+  // browser launch behind it, and thirty seconds of that is most of a minute
+  // per attempt on the loop people iterate in.
+  opened.context.setDefaultTimeout(
+    recording ? config.timeouts.actionMs : config.timeouts.rehearseMs,
+  );
 
   const director = new Director(
     opened.page,
@@ -266,13 +271,15 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
       error,
     });
     const message = error instanceof Error ? error.message : String(error);
+    const lastAction = director.performed.at(-1);
     throw new ScenarioFailure({
       scenarioId: scenario.id,
       phase,
       message: `${scenario.id}: ${message}`,
       forensics,
       lastStep: director.shownSteps.at(-1) ?? null,
-      suggestions: buildSuggestions(scenario.id, forensics, mode),
+      ...(lastAction ? { lastAction } : {}),
+      suggestions: buildSuggestions(scenario.id, forensics, mode, lastAction, config, message),
     });
   };
 
@@ -290,7 +297,10 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
       await fail("setup", error);
     }
 
-    director.markClipStart();
+    // Whether anything is on screen yet. A scenario that does its own
+    // navigating leaves the context on its blank starting page, and the clip
+    // would otherwise open - and take its poster - from that.
+    director.markClipStart(!isBlank(opened.page.url()));
 
     try {
       await scenario.run(director, ctx);
@@ -420,8 +430,29 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
   };
 }
 
-function buildSuggestions(id: string, forensics: Forensics, mode: RunMode): string[] {
+function buildSuggestions(
+  id: string,
+  forensics: Forensics,
+  mode: RunMode,
+  lastAction?: DirectorAction,
+  config?: ResolvedConfig,
+  message = "",
+): string[] {
   const out: string[] = [];
+
+  // The single most misleading thing a failure can show. The screenshot is
+  // taken once the page has stopped moving, so a scenario that clicked into a
+  // redirect is photographed on the page it landed on - which can look
+  // entirely healthy, and is not what the browser was waiting against.
+  const started = lastAction?.url;
+  if (started && forensics.url && started !== forensics.url) {
+    out.push(
+      `The page moved while this step ran: it was at ${started} when the step started, ` +
+        `and ${forensics.url} by the time it failed - so the screenshot below is of the ` +
+        `second page, not the one the step was waiting against`,
+    );
+  }
+
   if (forensics.screenshot) {
     out.push(`Open ${forensics.screenshot} to see what was on screen when it failed`);
   }
@@ -437,10 +468,30 @@ function buildSuggestions(id: string, forensics: Forensics, mode: RunMode): stri
     "To find the right selector, drive the page live with a browser tool " +
       "(for example `npx -y chrome-devtools-axi navigate <url>` then `snapshot`)",
   );
+  // A rehearsal and a take wait for different lengths of time, so one passing
+  // says less about the other than people assume. Worth saying at the moment
+  // it costs somebody, rather than only in the guide.
+  if (/Timeout .*exceeded|TimeoutError/i.test(message) && config) {
+    const take = Math.round(config.timeouts.actionMs / 1000);
+    const dry = Math.round(config.timeouts.rehearseMs / 1000);
+    out.push(
+      mode === "record"
+        ? `This waited ${take}s; a rehearsal waits ${dry}s, so a rehearsal passing does not ` +
+            `prove a take will. Raise \`timeouts.actionMs\` for an app that needs longer`
+        : `This waited ${dry}s; a take waits ${take}s, so a selector that is merely slow may ` +
+            `still record. Raise \`timeouts.rehearseMs\` if the rehearsal is too impatient`,
+    );
+  }
+
   if (mode === "record") {
     out.push(`Re-check a fix in seconds with \`screencast-axi rehearse ${id}\``);
   }
   return out;
+}
+
+/** Whether a URL is one of the empty pages a context can start on. */
+function isBlank(url: string): boolean {
+  return url === "" || url === "about:blank";
 }
 
 /**

@@ -26,7 +26,7 @@ installed copies go stale. Get the current source of truth from the CLI:
 
 - `screencast-axi --help` for the command index
 - `screencast-axi <command> --help` for per-command usage
-- `screencast-axi guide` for guidance, one topic at a time, not as a manual
+- `screencast-axi guide [topic]`; `guide scripting` is the scenario API
 - `screencast-axi doctor` for whether this machine can record at all
 
 Worth knowing before the first run:
