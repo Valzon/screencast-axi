@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.1.5](https://github.com/Valzon/screencast-axi/compare/v0.1.4...v0.1.5) (2026-09-13)
+
+
+### Features
+
+* a guide topic for the scenario API ([09bc760](https://github.com/Valzon/screencast-axi/commit/09bc760c08e0f2aed1e40bebc6a2c106a627c0b1))
+
+
+### Bug Fixes
+
+* a blank poster, a mangled action log, and a misleading failure report ([10d42bf](https://github.com/Valzon/screencast-axi/commit/10d42bf5891b97b7acee23bf049890559b25ce9b))
+* a clip no longer opens, or takes its poster, from a blank page ([f81c9e1](https://github.com/Valzon/screencast-axi/commit/f81c9e1076881a5f290931488bf66007593a099e))
+* a mistyped scenario path named a module inside this package ([5cb8266](https://github.com/Valzon/screencast-axi/commit/5cb8266b9797b8c61bbcc0957c16ef91ecc6dec8))
+* bound and state how long a take waits for an action ([6c679c9](https://github.com/Valzon/screencast-axi/commit/6c679c9b2aa6c6783de9ce60d755bf549a1b05ac))
+* say where the page was when a step started, not only where it ended ([17b11e3](https://github.com/Valzon/screencast-axi/commit/17b11e39926e5892c67932ffa32e960c4f88b528))
+* the action log no longer mangles the target it is reporting ([1c8acf4](https://github.com/Valzon/screencast-axi/commit/1c8acf467dd76be50faa1940ab7534f3d0f6207c))
+
 ## [0.1.4](https://github.com/Valzon/screencast-axi/compare/v0.1.3...v0.1.4) (2026-09-13)
 
 
