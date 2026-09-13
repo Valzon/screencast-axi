@@ -300,10 +300,29 @@ describe("plain default-export scenarios", () => {
     await expect(loadScenarioFiles([file])).rejects.toThrowError(/No scenario exported/);
   });
 
-  it("rejects a default export that is missing required fields", async () => {
+  /**
+   * A near-miss is a different problem from an absent export, and answering it
+   * with "no scenario exported by this file" sent authors looking for an
+   * export they had already written. Naming the field ends it.
+   */
+  it("names the fields a near-miss is missing", async () => {
     const file = join(dir, "incomplete.mjs");
     writeFileSync(file, `export default { id: "incomplete", run: async () => {} };`);
-    await expect(loadScenarioFiles([file])).rejects.toThrowError(/No scenario exported/);
+
+    const error = await loadScenarioFiles([file]).catch((e: unknown) => e);
+
+    expect((error as ScreencastError).code).toBe("INCOMPLETE_SCENARIO");
+    expect((error as ScreencastError).message).toContain("title");
+    expect((error as ScreencastError).message).toContain("description");
+  });
+
+  it("still says nothing was exported when nothing scenario-shaped was", async () => {
+    const file = join(dir, "unrelated.mjs");
+    writeFileSync(file, `export default { totally: "unrelated" };`);
+
+    const error = await loadScenarioFiles([file]).catch((e: unknown) => e);
+
+    expect((error as ScreencastError).code).toBe("NO_SCENARIO");
   });
 
   it("still takes a stamped and a plain scenario from one project", async () => {

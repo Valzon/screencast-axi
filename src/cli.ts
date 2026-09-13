@@ -159,9 +159,15 @@ function formatError(error: unknown): { output: string; exitCode: number } {
         scenario: error.scenarioId,
         phase: error.phase,
         ...(error.lastStep !== null ? { last_step: error.lastStep } : {}),
+        // What the scenario last did, which is usually but not always what
+        // failed - a `step()` with an index it does not have throws before it
+        // is ever recorded, so calling this "failed_on" claimed a causation it
+        // had no way to know.
         ...(error.lastAction
           ? {
-              failed_on: [error.lastAction.kind, error.lastAction.target].filter(Boolean).join(" "),
+              last_action: [error.lastAction.kind, error.lastAction.target]
+                .filter(Boolean)
+                .join(" "),
             }
           : {}),
         // Two URLs, because they are often not the same one: see the note in

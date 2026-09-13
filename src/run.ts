@@ -451,7 +451,9 @@ function buildSuggestions(
   // taken once the page has stopped moving, so a scenario that clicked into a
   // redirect is photographed on the page it landed on - which can look
   // entirely healthy, and is not what the browser was waiting against.
-  const started = lastAction?.url;
+  // Never for a navigation: the URL changing is what a `goto` is, so saying
+  // the page moved underneath it describes the step rather than a problem.
+  const started = lastAction?.kind === "goto" ? undefined : lastAction?.url;
   if (started && forensics.url && started !== forensics.url) {
     out.push(
       `The page moved while this step ran: it was at ${started} when the step started, ` +
@@ -473,7 +475,7 @@ function buildSuggestions(
   }
   out.push(
     "To find the right selector, drive the page live with a browser tool " +
-      "(for example `npx -y chrome-devtools-axi navigate <url>` then `snapshot`)",
+      "(for example `npx -y chrome-devtools-axi open <url>` then `snapshot`)",
   );
   // A rehearsal and a take wait for different lengths of time, so one passing
   // says less about the other than people assume. Worth saying at the moment

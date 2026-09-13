@@ -19,7 +19,7 @@ import { readMeasurement, type MeasurementKey } from "../measure.js";
 import { readManifest, type ManifestEntry } from "../manifest.js";
 import { buildInventory } from "../inventory.js";
 import { closest } from "../nearest.js";
-import { parseDuration, solvePace, type PaceSolution } from "../duration.js";
+import { parseTarget, solvePace, type PaceSolution } from "../duration.js";
 import { detectToolchain } from "../toolchain.js";
 import type { DefinedScenario } from "../types.js";
 
@@ -30,7 +30,15 @@ const SHARED: FlagSpecs = {
     description: "Override the scenario's base URL",
     placeholder: "url",
   },
-  pace: { kind: "number", description: "Speed multiplier; lower is faster" },
+  pace: {
+    kind: "number",
+    description: "Speed multiplier; lower is faster",
+    example: 0.8,
+    // Wider than the range `--duration` solves within, because an explicit
+    // pace is a deliberate choice - but still a multiplier, not a duration.
+    min: 0.1,
+    max: 5,
+  },
   device: { kind: "string", description: "Playwright device preset", placeholder: "name" },
   viewport: { kind: "string", description: "Explicit size, e.g. 390x844", placeholder: "WxH" },
   orientation: { kind: "string", description: "portrait or landscape", placeholder: "o" },
@@ -55,8 +63,19 @@ export const RECORD_FLAGS: FlagSpecs = {
   full: { kind: "boolean", description: "Include the full action log" },
   gif: { kind: "boolean", description: "Also emit a looping GIF" },
   webp: { kind: "boolean", description: "Also emit a looping WebP (half a GIF's size)" },
-  "loop-width": { kind: "number", description: "Width of the looping formats" },
-  "loop-fps": { kind: "number", description: "Frame rate of the looping formats" },
+  "loop-width": {
+    kind: "number",
+    description: "Width of the looping formats",
+    example: 800,
+    min: 16,
+  },
+  "loop-fps": {
+    kind: "number",
+    description: "Frame rate of the looping formats",
+    example: 15,
+    min: 1,
+    max: 60,
+  },
   "keep-raw": { kind: "boolean", description: "Keep the raw capture for inspection" },
 };
 
@@ -362,7 +381,7 @@ export async function recordCommand(args: string[], mode: RunMode): Promise<AxiS
   }
 
   const flagTargetMs =
-    flags["duration"] !== undefined ? parseDuration(flags["duration"] as string) : null;
+    flags["duration"] !== undefined ? parseTarget(flags["duration"] as string) : null;
 
   // Looping formats are for the places a <video> does not render. They are far
   // heavier than the mp4, so they stay opt-in per run.

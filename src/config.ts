@@ -9,6 +9,8 @@ import {
   defineScenario,
   isScenario,
   looksLikeScenario,
+  missingScenarioFields,
+  nearlyAScenario,
   type DefinedScenario,
   type Viewport,
 } from "./types.js";
@@ -313,11 +315,62 @@ export async function loadConfig(explicit?: string, cwd = process.cwd()): Promis
   return resolveConfig(raw, configPath, cwd);
 }
 
+/**
+ * Checks the shapes a config's own types promise but a plain object can break.
+ *
+ * A config is a TypeScript file, so these are all caught by an editor - and
+ * every one of them was still reachable, because the file is loaded at runtime
+ * and nothing verified it. The worst was `scenarios` written as a string
+ * rather than an array: iterating it yields single characters, each treated as
+ * a glob, and the resulting walk started at the filesystem root and ran for
+ * ten minutes before it was killed.
+ */
+function assertConfigShape(raw: ScreencastConfig, from: string | null): void {
+  const where = from ? relative(process.cwd(), from) : "the config";
+  const bad = (field: string, wanted: string, got: unknown): never => {
+    throw new ScreencastError(`${where}: \`${field}\` should be ${wanted}`, "INVALID_CONFIG", [
+      `Got ${describeValue(got)}`,
+      ...(field === "scenarios"
+        ? ['A single pattern still goes in an array: `scenarios: ["scenarios/*.ts"]`']
+        : []),
+    ]);
+  };
+
+  const r = raw as Record<string, unknown>;
+  if (r["scenarios"] !== undefined && !Array.isArray(r["scenarios"])) {
+    bad("scenarios", "an array of paths or globs", r["scenarios"]);
+  }
+  if (Array.isArray(r["scenarios"]) && r["scenarios"].some((p) => typeof p !== "string")) {
+    bad("scenarios", "an array of paths or globs", r["scenarios"]);
+  }
+  for (const field of ["outDir", "rawDir", "baseUrl"]) {
+    if (r[field] !== undefined && typeof r[field] !== "string") bad(field, "a string", r[field]);
+  }
+  if (r["pace"] !== undefined && typeof r["pace"] !== "number") bad("pace", "a number", r["pace"]);
+  const viewport = r["viewport"] as Record<string, unknown> | undefined;
+  if (viewport !== undefined) {
+    for (const edge of ["width", "height"]) {
+      if (!Number.isFinite(viewport[edge])) {
+        bad(`viewport.${edge}`, "a number", viewport[edge]);
+      }
+    }
+  }
+}
+
+function describeValue(value: unknown): string {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return `an array containing ${value.map((v) => typeof v).join(", ")}`;
+  if (typeof value === "string") return `the string \`${value}\``;
+  return `a ${typeof value}`;
+}
+
 export function resolveConfig(
   raw: ScreencastConfig,
   configPath: string | null,
   cwd = process.cwd(),
 ): ResolvedConfig {
+  assertConfigShape(raw, configPath);
+
   // Relative paths anchor to the config file, never to the shell's cwd -
   // otherwise the same command means different things from different
   // directories in the same repo.
@@ -459,6 +512,23 @@ export async function loadScenarioFiles(files: readonly string[]): Promise<Loade
     const found = [...new Set(candidates)].map((s) => (isScenario(s) ? s : defineScenario(s)));
 
     if (found.length === 0) {
+      // A default export that is *nearly* a scenario is a different problem
+      // with a different fix, and answering it with "no scenario exported"
+      // sent authors looking for a missing export they had already written.
+      const candidate = defaults.find((v) => nearlyAScenario(v));
+      if (candidate) {
+        const missing = missingScenarioFields(candidate);
+        throw new ScreencastError(
+          `${relative(process.cwd(), file)} exports a scenario missing ${missing.join(", ")}`,
+          "INCOMPLETE_SCENARIO",
+          [
+            `Add ${missing.map((m) => `\`${m}\``).join(" and ")} to the default export`,
+            "`id`, `title` and `description` are strings; `run` is a function taking the director",
+            '`import type { Scenario } from "screencast-axi"` and `satisfies Scenario` catch this before it runs',
+          ],
+        );
+      }
+
       throw new ScreencastError(`No scenario exported by ${file}`, "NO_SCENARIO", [
         "Make it the default export: `export default { id, title, description, run } satisfies Scenario`",
         'Type it with `import type { Scenario } from "screencast-axi"`, which leaves no runtime import',
