@@ -8,6 +8,7 @@ import { encode, type EncodeResult, type EncodeSettings } from "./encode.js";
 import { ScreencastError } from "./errors.js";
 import { captureFailure, type Forensics } from "./forensics.js";
 import { hashSteps, hashText, upsertEntry, type ManifestEntry } from "./manifest.js";
+import { writeMeasurement } from "./measure.js";
 import { mergeThemes, overlayInitScript, resolveOverlayTheme } from "./overlay.js";
 import { detectToolchain, missingFfmpegError, type Toolchain } from "./toolchain.js";
 import type { DefinedScenario, ScenarioContext, Viewport } from "./types.js";
@@ -122,16 +123,20 @@ export function assertScriptComplete(
   );
 }
 
-export async function runScenario(options: RunOptions): Promise<RunResult> {
-  const { scenario, config, mode } = options;
-  const log = options.log ?? (() => {});
-  const recording = mode === "record";
+/**
+ * The base URL a take will use, resolved the way `runScenario` resolves it.
+ *
+ * Exported so a caller deciding *whether* to run can key on the same values
+ * the run itself will use, rather than on an approximation of them.
+ */
+export function baseUrlFor(options: RunOptions): string {
+  return options.baseUrl ?? options.scenario.baseUrl ?? options.config.baseUrl;
+}
 
-  const outDir = options.outDir ?? config.outDir;
-  const baseUrl = options.baseUrl ?? scenario.baseUrl ?? config.baseUrl;
-  const pace = options.pace ?? scenario.pace ?? config.pace;
-
-  const viewport = await resolveViewport(
+/** The viewport a take will use, resolved the way `runScenario` resolves it. */
+export async function viewportFor(options: RunOptions): Promise<ResolvedViewport> {
+  const { scenario, config } = options;
+  return resolveViewport(
     {
       ...((options.device ?? scenario.device ?? config.device)
         ? { device: options.device ?? scenario.device ?? config.device }
@@ -148,6 +153,18 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
     },
     config.viewport,
   );
+}
+
+export async function runScenario(options: RunOptions): Promise<RunResult> {
+  const { scenario, config, mode } = options;
+  const log = options.log ?? (() => {});
+  const recording = mode === "record";
+
+  const outDir = options.outDir ?? config.outDir;
+  const baseUrl = baseUrlFor(options);
+  const pace = options.pace ?? scenario.pace ?? config.pace;
+
+  const viewport = await viewportFor(options);
 
   // Fail before the browser opens, not forty seconds into a take that cannot
   // possibly produce a file.
@@ -298,6 +315,25 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
   const durationMs = Math.max(0, clipEndedAt - opened.createdAt - Math.round(trimStart * 1000));
 
   if (!recording) {
+    // A pace-1 rehearsal is exactly what `--duration` sends the browser out to
+    // learn, so keep it: the next `record --duration` can skip its own pass.
+    // Only pace 1, because the solve is defined against a natural-speed take.
+    if (pace === 1 && options.sourceText !== undefined) {
+      writeMeasurement(
+        config.rawDir,
+        {
+          scenarioId: scenario.id,
+          sourceText: options.sourceText,
+          steps: scenario.steps,
+          baseUrl,
+          width: viewport.viewport.width,
+          height: viewport.viewport.height,
+          ...(viewport.device ? { device: viewport.device } : {}),
+        },
+        { durationMs, scaledPauseMs: director.scaledPauseMs },
+      );
+    }
+
     return {
       id: scenario.id,
       mode,
