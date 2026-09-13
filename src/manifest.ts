@@ -47,6 +47,19 @@ export interface ManifestEntry {
    * those look identical and a human has to judge every field.
    */
   readonly stepsHash?: string;
+  /**
+   * The scenario file this clip was recorded from, relative to this directory.
+   *
+   * What makes a clip recorded by path (`record ./scenarios/tour.ts`) as real
+   * as one the config lists. Without it the manifest remembers that a clip
+   * exists but not where it came from, so every read-only command has to
+   * assume the config is the only source of truth - and reports a clip
+   * recorded a second ago as an entry nothing produces any more.
+   *
+   * Relative so a library stays portable: a manifest committed to a repo and
+   * checked out elsewhere still points at the scenario.
+   */
+  readonly sourceFile?: string;
   readonly recorderVersion?: string;
 }
 

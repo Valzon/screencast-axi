@@ -1,4 +1,5 @@
 import { rm } from "node:fs/promises";
+import { relative } from "node:path";
 import { captureSize, openContext, resolveViewport, type ResolvedViewport } from "./browser.js";
 import { selectStrategy, type ResolvedConfig } from "./config.js";
 import type { AuthContext, AuthIdentity } from "./auth/types.js";
@@ -20,6 +21,8 @@ export interface RunOptions {
   readonly mode: RunMode;
   /** Source of the scenario module, hashed so staleness is answerable later. */
   readonly sourceText?: string;
+  /** Absolute path of the scenario module, recorded so the clip stays findable. */
+  readonly sourceFile?: string;
   readonly baseUrl?: string;
   readonly outDir?: string;
   readonly pace?: number;
@@ -356,6 +359,7 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
     ...(viewport.device ? { device: viewport.device } : {}),
     formats,
     ...(options.sourceText ? { sourceHash: hashText(options.sourceText) } : {}),
+    ...(options.sourceFile ? { sourceFile: relative(outDir, options.sourceFile) } : {}),
     stepsHash: hashSteps(scenario.steps),
     recorderVersion: VERSION,
   };

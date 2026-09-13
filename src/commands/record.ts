@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 import { loadConfig, loadScenarioFiles, loadScenarios, type ResolvedConfig } from "../config.js";
@@ -6,6 +7,7 @@ import { parseFlags, type FlagSpecs } from "../flags.js";
 import type { AxiStructuredOutput } from "../output.js";
 import { ScenarioFailure, runScenario, type RunMode, type RunResult } from "../run.js";
 import { parseDuration, solvePace, type PaceSolution } from "../duration.js";
+import { readManifest } from "../manifest.js";
 import { detectToolchain } from "../toolchain.js";
 import type { DefinedScenario } from "../types.js";
 
@@ -50,6 +52,25 @@ interface Selected {
 }
 
 /**
+ * A scenario the manifest remembers recording, by id.
+ *
+ * A clip recorded by path is not in the config, so re-cutting it by id - the
+ * command `record` itself prints when it finishes - used to fail with
+ * `UNKNOWN_SCENARIO`. The manifest knows which file the clip came from, so
+ * the id is answerable without the config listing it.
+ */
+async function recordedAs(id: string, config: ResolvedConfig): Promise<Selected | null> {
+  const entry = readManifest(config.outDir).entries.find((e) => e.id === id);
+  if (!entry?.sourceFile) return null;
+  const file = isAbsolute(entry.sourceFile)
+    ? entry.sourceFile
+    : resolve(config.outDir, entry.sourceFile);
+  if (!existsSync(file)) return null;
+  const loaded = await loadScenarioFiles([file]).catch(() => []);
+  return loaded.find((l) => l.scenario.id === id) ?? null;
+}
+
+/**
  * Resolves ids or file paths to scenarios.
  *
  * A path is accepted as well as an id so a first run needs no config: someone
@@ -75,7 +96,7 @@ async function select(
 
   const chosen: Selected[] = [];
   for (const id of ids) {
-    const match = loaded.find((l) => l.scenario.id === id);
+    const match = loaded.find((l) => l.scenario.id === id) ?? (await recordedAs(id, config));
     if (!match) {
       const known = loaded.map((l) => l.scenario.id);
       throw new ScreencastError(`Unknown scenario: ${id}`, "UNKNOWN_SCENARIO", [
@@ -218,6 +239,7 @@ export async function recordCommand(args: string[], mode: RunMode): Promise<AxiS
       scenario,
       config,
       ...(sourceText ? { sourceText } : {}),
+      sourceFile: file,
       ...(flags["base-url"] ? { baseUrl: flags["base-url"] as string } : {}),
       ...(flags["out"] ? { outDir: resolve(process.cwd(), flags["out"] as string) } : {}),
       ...(flags["device"] ? { device: flags["device"] as string } : {}),

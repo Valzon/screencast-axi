@@ -1,6 +1,11 @@
 import { existsSync, readdirSync } from "node:fs";
-import { basename, extname, join } from "node:path";
-import { loadScenarios, type LoadedScenario, type ResolvedConfig } from "./config.js";
+import { basename, extname, isAbsolute, join, resolve } from "node:path";
+import {
+  loadScenarioFiles,
+  loadScenarios,
+  type LoadedScenario,
+  type ResolvedConfig,
+} from "./config.js";
 import {
   claimedFiles,
   hashSteps,
@@ -43,11 +48,25 @@ export interface InventoryRow {
   readonly missing: readonly string[];
   /** Why it is stale, when it is. */
   readonly staleReason?: "narration changed" | "scenario changed";
+  /**
+   * Whether the config lists this scenario.
+   *
+   * False for a clip recorded by path. It is still a real clip with a real
+   * scenario behind it - it just is not part of the configured set, so
+   * `record --all` will not re-shoot it.
+   */
+  readonly configured: boolean;
 }
 
 export interface Inventory {
   readonly rows: readonly InventoryRow[];
-  /** Manifest entries with no scenario behind them any more. */
+  /**
+   * Manifest entries with no scenario behind them any more.
+   *
+   * Only entries whose scenario cannot be found at all: not listed by the
+   * config, and either recorded before the manifest tracked source files or
+   * recorded from a file that has since been moved or deleted.
+   */
   readonly orphans: readonly ManifestEntry[];
   /** Media in the output directory that no manifest entry claims. */
   readonly strays: readonly string[];
@@ -82,13 +101,52 @@ async function statusOf(
   return { status: "recorded", missing: [] };
 }
 
+/**
+ * The scenario a manifest entry was recorded from, if it can still be loaded.
+ *
+ * A clip recorded by path (`record ./scenarios/tour.ts`) is not in the config,
+ * and before the manifest tracked `sourceFile` there was no way to tell that
+ * from a clip whose scenario had been deleted. Both looked like an entry
+ * nothing produces - so the tool reported a clip recorded seconds earlier as
+ * an orphan and offered to delete it.
+ *
+ * Any failure to load is answered with null rather than thrown: a read-only
+ * command that surveys the library must not die because one scenario file has
+ * a syntax error. The entry is then reported as an orphan, which is the
+ * honest description of what can be seen from here.
+ */
+async function scenarioBehind(
+  entry: ManifestEntry,
+  outDir: string,
+): Promise<LoadedScenario | null> {
+  if (!entry.sourceFile) return null;
+  const file = isAbsolute(entry.sourceFile) ? entry.sourceFile : resolve(outDir, entry.sourceFile);
+  if (!existsSync(file)) return null;
+  try {
+    const loaded = await loadScenarioFiles([file]);
+    return loaded.find((l) => l.scenario.id === entry.id) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function buildInventory(config: ResolvedConfig): Promise<Inventory> {
   const loaded = await loadScenarios(config);
   const { entries, problems } = readManifest(config.outDir);
   const byId = new Map(entries.map((e) => [e.id, e]));
+  const configured = new Set(loaded.map((l) => l.scenario.id));
+
+  // Clips recorded by path: real scenarios the config simply does not list.
+  // Resolved here so every read-only command sees one kind of clip.
+  const unlisted: LoadedScenario[] = [];
+  for (const entry of entries) {
+    if (configured.has(entry.id)) continue;
+    const found = await scenarioBehind(entry, config.outDir);
+    if (found) unlisted.push(found);
+  }
 
   const rows: InventoryRow[] = [];
-  for (const item of loaded) {
+  for (const item of [...loaded, ...unlisted]) {
     const entry = byId.get(item.scenario.id);
     const state = await statusOf(item, entry);
     const missing = entry ? missingFiles(entry, config.outDir) : [];
@@ -98,6 +156,7 @@ export async function buildInventory(config: ResolvedConfig): Promise<Inventory>
       steps: item.scenario.steps?.length ?? 0,
       durationMs: entry?.durationMs ?? 0,
       file: item.file,
+      configured: configured.has(item.scenario.id),
       ...(entry ? { entry } : {}),
       ...state,
       // A missing file beats a stale hash: the clip is not merely dated, it is
@@ -106,7 +165,7 @@ export async function buildInventory(config: ResolvedConfig): Promise<Inventory>
     });
   }
 
-  const known = new Set(loaded.map((l) => l.scenario.id));
+  const known = new Set(rows.map((r) => r.id));
   const orphans = entries.filter((e) => !known.has(e.id));
 
   // Built from what each entry says it wrote, so an animated WebP - which
