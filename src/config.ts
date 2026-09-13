@@ -13,6 +13,7 @@ import {
   type Viewport,
 } from "./types.js";
 import { importFromProject } from "./resolve.js";
+import { nearest } from "./nearest.js";
 import { noAuth } from "./auth/strategies.js";
 import type { AuthConfig, AuthStrategy } from "./auth/types.js";
 
@@ -236,17 +237,44 @@ function selfImportFailure(file: string, error: unknown): ScreencastError | null
   );
 }
 
+/**
+ * What to say about a path that is not a scenario.
+ *
+ * The path is almost always nearly right - a typo, the wrong extension, a
+ * directory instead of the file in it - and the file meant is usually sitting
+ * beside it. Naming that file is the difference between a correct error and a
+ * useful one.
+ */
+function missingFile(file: string): ScreencastError {
+  const { suggestion, siblings, dir, isDirectory } = nearest(file);
+  const shown = siblings.slice(0, 6);
+
+  return new ScreencastError(
+    isDirectory ? `That is a directory, not a scenario: ${file}` : `No such file: ${file}`,
+    "SCENARIO_NOT_FOUND",
+    [
+      ...(suggestion ? [`Did you mean ${relative(process.cwd(), suggestion)}?`] : []),
+      ...(shown.length > 0
+        ? [
+            `${relative(process.cwd(), dir) || "."} holds: ${shown.join(", ")}` +
+              (siblings.length > shown.length
+                ? `, and ${siblings.length - shown.length} more`
+                : ""),
+          ]
+        : [`Nothing loadable in ${relative(process.cwd(), dir) || "."}`]),
+      ...(isDirectory
+        ? ["Pass one file, or list the directory in the config's `scenarios`"]
+        : ["Paths are resolved from the working directory"]),
+      "`screencast-axi list` shows every scenario the config knows about",
+    ],
+  );
+}
+
 async function importModule(file: string): Promise<Record<string, unknown>> {
   // Checked before the import, because Node's own message for a missing file
   // names it as a module "imported from" somewhere inside this package - which
   // reads like a broken install rather than the typo it almost always is.
-  if (!existsSync(file)) {
-    throw new ScreencastError(`No such file: ${file}`, "SCENARIO_NOT_FOUND", [
-      "Check the path - it is resolved from the working directory",
-      "`screencast-axi list` shows every scenario the config knows about",
-      "`screencast-axi scaffold <id> --url <url>` writes a new one",
-    ]);
-  }
+  if (!existsSync(file) || statSync(file).isDirectory()) throw missingFile(file);
 
   const url = pathToFileURL(file).href;
   try {

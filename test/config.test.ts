@@ -352,4 +352,19 @@ describe("a scenario file that is not there", () => {
     expect((error as ScreencastError).code).toBe("SCENARIO_NOT_FOUND");
     expect((error as ScreencastError).message).toContain("nope.mjs");
   });
+
+  it("names the file that was probably meant", async () => {
+    writeFileSync(join(dir, "checkout.mjs"), "export default {};");
+    const error = await loadScenarioFiles([join(dir, "chekout.mjs")]).catch((e: unknown) => e);
+
+    expect((error as ScreencastError).suggestions.join(" ")).toContain("Did you mean");
+    expect((error as ScreencastError).suggestions.join(" ")).toContain("checkout.mjs");
+  });
+
+  it("treats a directory as its own mistake", async () => {
+    const error = await loadScenarioFiles([dir]).catch((e: unknown) => e);
+
+    expect((error as ScreencastError).code).toBe("SCENARIO_NOT_FOUND");
+    expect((error as ScreencastError).message).toContain("directory");
+  });
 });
