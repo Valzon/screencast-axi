@@ -2,6 +2,7 @@ import { runAxiCli } from "axi-sdk-js";
 import { encode as toon } from "@toon-format/toon";
 import { isScreencastError } from "./errors.js";
 import { ScenarioFailure } from "./run.js";
+import { isFailingReport } from "./errors.js";
 import { VERSION } from "./version.js";
 import { homeView } from "./commands/home.js";
 import { guideCommand, guideHelp } from "./commands/guide.js";
@@ -143,6 +144,12 @@ const COMMAND_HELP: Record<string, string> = {
  * error, which is what keeps it free of an ESM-only dependency.
  */
 function formatError(error: unknown): { output: string; exitCode: number } {
+  // A complete report that happens to describe a failure. Rendered exactly as
+  // it would have been on the success path; only the status differs.
+  if (isFailingReport(error)) {
+    return { output: `${toon(error.payload)}\n`, exitCode: 1 };
+  }
+
   if (error instanceof ScenarioFailure) {
     const f = error.forensics;
     return {

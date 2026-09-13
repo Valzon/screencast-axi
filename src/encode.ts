@@ -1,4 +1,4 @@
-import { mkdir, rm, stat } from "node:fs/promises";
+import { mkdir, rename, rm, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
 import {
   detectToolchain,
@@ -114,154 +114,206 @@ export async function encode(opts: EncodeOptions): Promise<EncodeResult> {
 
   await mkdir(opts.outDir, { recursive: true });
 
-  // Input seek: `-ss` before `-i` is the fast, frame-accurate-enough form for
-  // trimming dead air off the head.
-  const trim = opts.trimStart > 0.05 ? ["-ss", opts.trimStart.toFixed(2)] : [];
-  // `-2` keeps the height even, which h264's yuv420p requires.
-  const scale = `scale=${opts.width}:-2:flags=lanczos`;
+  /**
+   * Deliverables are written under a staging name and moved into place only
+   * once every format has succeeded.
+   *
+   * Encoding straight to the final names meant a run that failed part-way -
+   * a bad viewport, a missing encoder, a killed process - had already
+   * replaced the previous clip with a truncated one. A 261-byte mp4 with no
+   * streams, sitting where twenty seconds of working video used to be, while
+   * the manifest still described the old take.
+   */
+  const staged: { from: string; to: string }[] = [];
+  const stage = (name: string): string => {
+    const to = join(opts.outDir, name);
+    // The extension has to survive: ffmpeg and cwebp both pick their output
+    // format from it, so `.part` on the end makes the encode fail instead of
+    // protecting it. Hidden, and marked, but still an .mp4.
+    const cut = name.lastIndexOf(".");
+    const from = join(opts.outDir, `.${name.slice(0, cut)}.part${name.slice(cut)}`);
+    staged.push({ from, to });
+    return from;
+  };
+  const discardStaged = async (): Promise<void> => {
+    await Promise.all(staged.map(({ from }) => rm(from, { force: true })));
+  };
 
-  const mp4 = join(opts.outDir, `${opts.id}.mp4`);
-  const webm = join(opts.outDir, `${opts.id}.webm`);
+  try {
+    return await run();
+  } catch (error) {
+    await discardStaged();
+    throw error;
+  }
 
-  // In sequence, deliberately. Each pass already saturates the machine - VP9
-  // with `-row-mt` most of all - so running the three concurrently only makes
-  // them contend: measured on a 10s 1280x800 clip across ten cores, 7.4s in
-  // sequence against 7.6s in parallel.
-  await runOrThrow(ffmpeg, [
-    ...QUIET,
-    ...trim,
-    "-i",
-    opts.input,
-    "-vf",
-    `fps=${opts.fps},${scale}`,
-    "-an",
-    "-c:v",
-    "libx264",
-    "-profile:v",
-    opts.mp4.profile,
-    "-preset",
-    opts.mp4.preset,
-    "-crf",
-    String(opts.mp4.crf),
-    "-pix_fmt",
-    "yuv420p",
-    "-movflags",
-    "+faststart",
-    mp4,
-  ]);
+  async function run(): Promise<EncodeResult> {
+    // Input seek: `-ss` before `-i` is the fast, frame-accurate-enough form for
+    // trimming dead air off the head.
+    const trim = opts.trimStart > 0.05 ? ["-ss", opts.trimStart.toFixed(2)] : [];
+    // `-2` keeps the height even, which h264's yuv420p requires.
+    const scale = `scale=${opts.width}:-2:flags=lanczos`;
 
-  await runOrThrow(ffmpeg, [
-    ...QUIET,
-    ...trim,
-    "-i",
-    opts.input,
-    "-vf",
-    `fps=${opts.fps},${scale}`,
-    "-an",
-    "-c:v",
-    "libvpx-vp9",
-    "-crf",
-    String(opts.webm.crf),
-    "-b:v",
-    "0",
-    "-row-mt",
-    "1",
-    "-deadline",
-    "good",
-    webm,
-  ]);
+    const mp4 = stage(`${opts.id}.mp4`);
+    const webm = stage(`${opts.id}.webm`);
 
-  // The poster gets its own seek: see `posterAt`.
-  const posterSeek =
-    opts.posterAt !== undefined && opts.posterAt > 0.05 ? ["-ss", opts.posterAt.toFixed(2)] : trim;
-  const poster = await encodePoster(opts, toolchain, ffmpeg, posterSeek, scale);
-
-  // Both looping formats come from the same palette pass, so asking for the
-  // pair costs one extra conversion rather than a second encode.
-  let gif: string | undefined;
-  let animatedWebp: string | undefined;
-  if (opts.gif || opts.animatedWebp) {
-    const wantsGif = opts.gif;
-    gif = join(opts.outDir, `${opts.id}.gif`);
-    const palette = join(opts.outDir, `.${opts.id}.palette.png`);
-    // Never wider than the deliverable it is cut from. The default loop width
-    // is sized for a desktop clip, and applying it to a phone capture scaled a
-    // 360px recording up to 800px - a blurrier picture in a file several times
-    // the size, which is the opposite of what these formats are for.
-    const loopWidth = Math.min(opts.gifWidth, opts.width);
-    const gifScale = `fps=${opts.gifFps},scale=${loopWidth}:-1:flags=lanczos`;
+    // In sequence, deliberately. Each pass already saturates the machine - VP9
+    // with `-row-mt` most of all - so running the three concurrently only makes
+    // them contend: measured on a 10s 1280x800 clip across ten cores, 7.4s in
+    // sequence against 7.6s in parallel.
     await runOrThrow(ffmpeg, [
       ...QUIET,
       ...trim,
       "-i",
       opts.input,
       "-vf",
-      `${gifScale},palettegen=max_colors=192:stats_mode=diff`,
-      palette,
+      `fps=${opts.fps},${scale}`,
+      "-an",
+      "-c:v",
+      "libx264",
+      "-profile:v",
+      opts.mp4.profile,
+      "-preset",
+      opts.mp4.preset,
+      "-crf",
+      String(opts.mp4.crf),
+      "-pix_fmt",
+      "yuv420p",
+      "-movflags",
+      "+faststart",
+      mp4,
     ]);
+
     await runOrThrow(ffmpeg, [
       ...QUIET,
       ...trim,
       "-i",
       opts.input,
-      "-i",
-      palette,
-      "-lavfi",
-      `${gifScale}[x];[x][1:v]paletteuse=dither=sierra2_4a:diff_mode=rectangle`,
-      "-loop",
+      "-vf",
+      `fps=${opts.fps},${scale}`,
+      "-an",
+      "-c:v",
+      "libvpx-vp9",
+      "-crf",
+      String(opts.webm.crf),
+      "-b:v",
       "0",
-      gif,
+      "-row-mt",
+      "1",
+      "-deadline",
+      "good",
+      webm,
     ]);
-    await rm(palette, { force: true });
 
-    if (opts.animatedWebp) {
-      // gif2webp rather than ffmpeg: the same builds that lack libwebp for the
-      // poster lack it here too, and gif2webp ships in the same package as the
-      // cwebp the poster already falls back to.
-      const converter = toolchain.gif2webp;
-      if (!converter) {
-        throw new Error(
-          "gif2webp was not found, so an animated WebP cannot be produced. " +
-            `Install it with \`${installHint("cwebp")}\` (same package as cwebp), ` +
-            "or drop `animatedWebp` and use the GIF.",
-        );
-      }
-      animatedWebp = join(opts.outDir, `${opts.id}.anim.webp`);
-      await runOrThrow(converter.path, [
-        "-quiet",
-        "-lossy",
-        "-q",
-        String(opts.animatedWebpQuality),
-        "-m",
-        "6",
-        gif,
-        "-o",
-        animatedWebp,
+    // The poster gets its own seek: see `posterAt`.
+    const posterSeek =
+      opts.posterAt !== undefined && opts.posterAt > 0.05
+        ? ["-ss", opts.posterAt.toFixed(2)]
+        : trim;
+    const poster = await encodePoster(opts, toolchain, ffmpeg, posterSeek, scale, stage);
+
+    // Both looping formats come from the same palette pass, so asking for the
+    // pair costs one extra conversion rather than a second encode.
+    let gif: string | undefined;
+    let animatedWebp: string | undefined;
+    if (opts.gif || opts.animatedWebp) {
+      const wantsGif = opts.gif;
+      gif = stage(`${opts.id}.gif`);
+      const palette = join(opts.outDir, `.${opts.id}.palette.png`);
+      // Never wider than the deliverable it is cut from. The default loop width
+      // is sized for a desktop clip, and applying it to a phone capture scaled a
+      // 360px recording up to 800px - a blurrier picture in a file several times
+      // the size, which is the opposite of what these formats are for.
+      const loopWidth = Math.min(opts.gifWidth, opts.width);
+      const gifScale = `fps=${opts.gifFps},scale=${loopWidth}:-1:flags=lanczos`;
+      await runOrThrow(ffmpeg, [
+        ...QUIET,
+        ...trim,
+        "-i",
+        opts.input,
+        "-vf",
+        `${gifScale},palettegen=max_colors=192:stats_mode=diff`,
+        palette,
       ]);
+      await runOrThrow(ffmpeg, [
+        ...QUIET,
+        ...trim,
+        "-i",
+        opts.input,
+        "-i",
+        palette,
+        "-lavfi",
+        `${gifScale}[x];[x][1:v]paletteuse=dither=sierra2_4a:diff_mode=rectangle`,
+        "-loop",
+        "0",
+        gif,
+      ]);
+      await rm(palette, { force: true });
+
+      if (opts.animatedWebp) {
+        // gif2webp rather than ffmpeg: the same builds that lack libwebp for the
+        // poster lack it here too, and gif2webp ships in the same package as the
+        // cwebp the poster already falls back to.
+        const converter = toolchain.gif2webp;
+        if (!converter) {
+          throw new Error(
+            "gif2webp was not found, so an animated WebP cannot be produced. " +
+              `Install it with \`${installHint("cwebp")}\` (same package as cwebp), ` +
+              "or drop `animatedWebp` and use the GIF.",
+          );
+        }
+        animatedWebp = stage(`${opts.id}.anim.webp`);
+        await runOrThrow(converter.path, [
+          "-quiet",
+          "-lossy",
+          "-q",
+          String(opts.animatedWebpQuality),
+          "-m",
+          "6",
+          gif,
+          "-o",
+          animatedWebp,
+        ]);
+      }
+
+      if (!wantsGif) {
+        await rm(gif, { force: true });
+        gif = undefined;
+      }
     }
 
-    if (!wantsGif) {
-      await rm(gif, { force: true });
-      gif = undefined;
+    // Every format encoded. Only now does anything replace what was there.
+    const produced = new Set([mp4, webm, poster, gif, animatedWebp].filter(Boolean));
+    const published = new Map<string, string>();
+    for (const { from, to } of staged) {
+      if (!produced.has(from)) {
+        // Staged but not wanted in the end - the GIF behind `--webp` alone.
+        await rm(from, { force: true });
+        continue;
+      }
+      await rename(from, to);
+      published.set(from, to);
     }
-  }
 
-  const sizes: Record<string, number> = {};
-  for (const file of [mp4, webm, poster, gif, animatedWebp].filter((f): f is string =>
-    Boolean(f),
-  )) {
-    sizes[basename(file)] = (await stat(file)).size;
-  }
+    const final = (path: string | undefined): string | undefined =>
+      path === undefined ? undefined : (published.get(path) ?? path);
 
-  return {
-    mp4,
-    webm,
-    poster,
-    ...(gif ? { gif } : {}),
-    ...(animatedWebp ? { animatedWebp } : {}),
-    sizes,
-    posterEncoder: toolchain.posterEncoder,
-  };
+    const sizes: Record<string, number> = {};
+    for (const file of [mp4, webm, poster, gif, animatedWebp]
+      .map(final)
+      .filter((f): f is string => Boolean(f))) {
+      sizes[basename(file)] = (await stat(file)).size;
+    }
+
+    return {
+      mp4: final(mp4) as string,
+      webm: final(webm) as string,
+      poster: final(poster) as string,
+      ...(gif ? { gif: final(gif) as string } : {}),
+      ...(animatedWebp ? { animatedWebp: final(animatedWebp) as string } : {}),
+      sizes,
+      posterEncoder: toolchain.posterEncoder,
+    };
+  }
 }
 
 /**
@@ -279,9 +331,10 @@ async function encodePoster(
   ffmpeg: string,
   trim: readonly string[],
   scale: string,
+  stage: (name: string) => string,
 ): Promise<string> {
   if (toolchain.posterEncoder === "png") {
-    const png = join(opts.outDir, `${opts.id}.png`);
+    const png = stage(`${opts.id}.png`);
     await runOrThrow(ffmpeg, [
       ...QUIET,
       ...trim,
@@ -296,7 +349,7 @@ async function encodePoster(
     return png;
   }
 
-  const webp = join(opts.outDir, `${opts.id}.webp`);
+  const webp = stage(`${opts.id}.webp`);
 
   if (toolchain.posterEncoder === "ffmpeg") {
     await runOrThrow(ffmpeg, [
