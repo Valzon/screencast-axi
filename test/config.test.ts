@@ -319,3 +319,25 @@ describe("plain default-export scenarios", () => {
     expect(loaded.map((l) => l.scenario.id)).toEqual(["stamped", "plain"]);
   });
 });
+
+/**
+ * Both per-action budgets are stated rather than inherited. A take used to
+ * fall through to Playwright's 30s default, so a wrong selector cost half a
+ * minute of waiting plus the browser launch behind it, on the loop people
+ * iterate in - and there was no way to turn it down.
+ */
+describe("per-action timeouts", () => {
+  it("gives a take a shorter budget than Playwright's default, and a rehearsal a shorter one still", () => {
+    const config = resolveConfig({}, null, dir);
+    expect(config.timeouts.actionMs).toBe(15_000);
+    expect(config.timeouts.rehearseMs).toBe(8_000);
+    expect(config.timeouts.actionMs).toBeLessThan(30_000);
+    expect(config.timeouts.rehearseMs).toBeLessThan(config.timeouts.actionMs);
+  });
+
+  it("lets an app that genuinely needs longer say so", () => {
+    const config = resolveConfig({ timeouts: { actionMs: 45_000 } }, null, dir);
+    expect(config.timeouts.actionMs).toBe(45_000);
+    expect(config.timeouts.rehearseMs).toBe(8_000);
+  });
+});

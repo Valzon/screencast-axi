@@ -61,6 +61,15 @@ export interface ScreencastConfig {
     readonly runMs?: number;
     /** Per-action timeout during a rehearsal. Deliberately short. */
     readonly rehearseMs?: number;
+    /**
+     * Per-action timeout during a take.
+     *
+     * Longer than a rehearsal's, because a take waits on a real app rather
+     * than trying to fail fast - but bounded and stated, rather than left to
+     * Playwright's 30s default, so a wrong selector is 15 seconds of waiting
+     * instead of thirty. Raise it for an app that genuinely needs longer.
+     */
+    readonly actionMs?: number;
     /** Ceiling on how long `goto` waits for the network to go quiet. */
     readonly settleMs?: number;
   };
@@ -86,6 +95,7 @@ export interface ResolvedConfig {
     readonly setupMs: number;
     readonly runMs: number;
     readonly rehearseMs: number;
+    readonly actionMs: number;
     readonly settleMs: number;
   };
 }
@@ -308,6 +318,7 @@ export function resolveConfig(
       setupMs: raw.timeouts?.setupMs ?? 120_000,
       runMs: raw.timeouts?.runMs ?? 300_000,
       rehearseMs: raw.timeouts?.rehearseMs ?? 8_000,
+      actionMs: raw.timeouts?.actionMs ?? 15_000,
       settleMs: raw.timeouts?.settleMs ?? DEFAULT_SETTLE_MS,
     },
   };

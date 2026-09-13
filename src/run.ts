@@ -208,13 +208,14 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
     content: overlayInitScript(resolveOverlayTheme(mergeThemes(config.overlay, scenario.overlay))),
   });
 
-  // A rehearsal exists to fail fast. Playwright's 30s default is right for a
-  // take - a real app can genuinely take that long to settle - but it makes a
-  // rehearsal cost as much as the recording it was meant to replace, which
-  // defeats the point. A take keeps the generous default.
-  if (!recording) {
-    opened.context.setDefaultTimeout(config.timeouts.rehearseMs);
-  }
+  // Both are set, and neither is Playwright's 30s default. A rehearsal exists
+  // to fail fast, so it gets a few seconds. A take waits on a real app and
+  // gets longer - but a wrong selector still costs a bounded wait plus the
+  // browser launch behind it, and thirty seconds of that is most of a minute
+  // per attempt on the loop people iterate in.
+  opened.context.setDefaultTimeout(
+    recording ? config.timeouts.actionMs : config.timeouts.rehearseMs,
+  );
 
   const director = new Director(
     opened.page,
@@ -278,7 +279,7 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
       forensics,
       lastStep: director.shownSteps.at(-1) ?? null,
       ...(lastAction ? { lastAction } : {}),
-      suggestions: buildSuggestions(scenario.id, forensics, mode, lastAction),
+      suggestions: buildSuggestions(scenario.id, forensics, mode, lastAction, config, message),
     });
   };
 
@@ -434,6 +435,8 @@ function buildSuggestions(
   forensics: Forensics,
   mode: RunMode,
   lastAction?: DirectorAction,
+  config?: ResolvedConfig,
+  message = "",
 ): string[] {
   const out: string[] = [];
 
@@ -465,6 +468,21 @@ function buildSuggestions(
     "To find the right selector, drive the page live with a browser tool " +
       "(for example `npx -y chrome-devtools-axi navigate <url>` then `snapshot`)",
   );
+  // A rehearsal and a take wait for different lengths of time, so one passing
+  // says less about the other than people assume. Worth saying at the moment
+  // it costs somebody, rather than only in the guide.
+  if (/Timeout .*exceeded|TimeoutError/i.test(message) && config) {
+    const take = Math.round(config.timeouts.actionMs / 1000);
+    const dry = Math.round(config.timeouts.rehearseMs / 1000);
+    out.push(
+      mode === "record"
+        ? `This waited ${take}s; a rehearsal waits ${dry}s, so a rehearsal passing does not ` +
+            `prove a take will. Raise \`timeouts.actionMs\` for an app that needs longer`
+        : `This waited ${dry}s; a take waits ${take}s, so a selector that is merely slow may ` +
+            `still record. Raise \`timeouts.rehearseMs\` if the rehearsal is too impatient`,
+    );
+  }
+
   if (mode === "record") {
     out.push(`Re-check a fix in seconds with \`screencast-axi rehearse ${id}\``);
   }
