@@ -1,6 +1,7 @@
 import type { Browser, BrowserContext, LaunchOptions, Page } from "playwright";
 import { ScreencastError } from "./errors.js";
 import { importFromProject } from "./resolve.js";
+import { closest } from "./nearest.js";
 import type { Viewport } from "./types.js";
 
 /**
@@ -112,12 +113,17 @@ export async function resolveViewport(
     const preset = module.devices[request.device];
     if (!preset) {
       const names = Object.keys(module.devices);
-      const near = names.filter((n) => n.toLowerCase().includes(request.device!.toLowerCase()));
-      throw new ScreencastError(`Unknown device: ${request.device}`, "UNKNOWN_DEVICE", [
-        near.length > 0
-          ? `Did you mean: ${near.slice(0, 5).join(", ")}?`
-          : `Playwright ships ${names.length} presets, e.g. ${names.slice(0, 4).join(", ")}`,
-        "Device names are Playwright's own and are case-sensitive",
+      const wanted = request.device;
+      const contains = names.filter((n) => n.toLowerCase().includes(wanted.toLowerCase()));
+      // Substring first, because "iPhone 13" against "iPhone 13 Pro" is a
+      // better answer than edit distance gives; then the nearest spelling,
+      // which is what catches "iphone13" and "Nokia 3310".
+      const near =
+        contains.length > 0 ? contains.slice(0, 5) : [closest(wanted, names)].filter(Boolean);
+      throw new ScreencastError(`Unknown device: ${wanted}`, "UNKNOWN_DEVICE", [
+        ...(near.length > 0 ? [`Did you mean: ${near.join(", ")}?`] : []),
+        `Playwright ships ${names.length} presets, and the names are its own and case-sensitive`,
+        "`--viewport 390x844` works when no preset fits",
       ]);
     }
     const overridden =

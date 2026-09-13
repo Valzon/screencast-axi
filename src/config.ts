@@ -461,6 +461,18 @@ export function expandScenarioPattern(pattern: string, rootDir: string): string[
   return walk(dir, recursive).filter((f) => (suffix ? f.endsWith(suffix) : true));
 }
 
+/** Ids are file stems, so they follow the same rule `scaffold` writes them by. */
+const SCENARIO_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/** A best effort at what the author probably meant, for the error to suggest. */
+function slugify(id: string): string {
+  const slug = id
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug || "clip";
+}
+
 export interface LoadedScenario {
   readonly scenario: DefinedScenario;
   /** Absolute path of the module it came from, for error messages. */
@@ -537,6 +549,21 @@ export async function loadScenarioFiles(files: readonly string[]): Promise<Loade
     }
 
     for (const scenario of found) {
+      // The id is the output file stem, so anything that is not a filename
+      // fails at the encoder - after a full browser take has already been
+      // shot. `scaffold` enforces the same rule when it writes one.
+      if (!SCENARIO_ID.test(scenario.id)) {
+        throw new ScreencastError(
+          `\`${scenario.id}\` cannot be a scenario id`,
+          "INVALID_SCENARIO_ID",
+          [
+            `In ${relative(process.cwd(), file)}`,
+            "Ids become the file name of every deliverable, so they are lower case, digits and dashes",
+            `Try \`${slugify(scenario.id)}\``,
+          ],
+        );
+      }
+
       const previous = seen.get(scenario.id);
       if (previous) {
         // Two clips writing the same file stem would silently overwrite each

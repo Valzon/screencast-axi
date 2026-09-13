@@ -223,6 +223,7 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
       baseUrl,
       pace,
       settleMs: config.timeouts.settleMs,
+      log: (message: string) => log(`  ${message}`),
       ...(scenario.steps ? { steps: scenario.steps } : {}),
     },
     opened.createdAt,
