@@ -34,6 +34,27 @@ export function parseDuration(input: string): number {
   ]);
 }
 
+/** Shortest target worth solving for. Below this there is no clip. */
+const MIN_TARGET_MS = 1000;
+
+/**
+ * A duration that can actually be aimed at.
+ *
+ * Zero parses perfectly well and then asks the solver for a negative pace,
+ * which was reported to the user as a diagnosis rather than as the nonsense
+ * it is.
+ */
+export function parseTarget(input: string): number {
+  const ms = parseDuration(input);
+  if (ms < MIN_TARGET_MS) {
+    throw new ScreencastError(`A target of ${ms}ms is too short to record`, "VALIDATION_ERROR", [
+      `Ask for at least ${MIN_TARGET_MS / 1000}s`,
+      "A clip is paced to land near the target, not cut to it",
+    ]);
+  }
+  return ms;
+}
+
 export interface PaceSolution {
   readonly pace: number;
   readonly clamped: boolean;

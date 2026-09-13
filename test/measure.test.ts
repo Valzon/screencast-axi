@@ -14,6 +14,7 @@ const KEY: MeasurementKey = {
   baseUrl: "https://example.com",
   width: 1280,
   height: 800,
+  timing: { settleMs: 2500, rehearseMs: 8000, actionMs: 15000, pace: 1 },
 };
 
 const RESULT = { durationMs: 8400, scaledPauseMs: 5200 };
@@ -46,6 +47,16 @@ describe("reusing a measured length", () => {
     ["a different width", { width: 390 }],
     ["a different height", { height: 844 }],
     ["a device preset", { device: "iPhone 13" }],
+    [
+      // The knob `guide duration` tells people to turn, and it feeds the half
+      // of the model the measuring pass treats as fixed.
+      "a different settle ceiling",
+      { timing: { settleMs: 50, rehearseMs: 8000, actionMs: 15000, pace: 1 } },
+    ],
+    [
+      "a different action timeout",
+      { timing: { settleMs: 2500, rehearseMs: 8000, actionMs: 45000, pace: 1 } },
+    ],
     ["another scenario's id", { scenarioId: "other" }],
   ])("is not reused after %s", (_label, over) => {
     writeMeasurement(raw, KEY, RESULT);

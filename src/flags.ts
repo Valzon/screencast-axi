@@ -21,6 +21,17 @@ export interface FlagSpec {
   readonly description: string;
   /** Placeholder shown in help, e.g. `dir` renders as `--out <dir>`. */
   readonly placeholder?: string;
+  /**
+   * A value that makes sense for this flag, shown when parsing fails.
+   *
+   * Every numeric flag used to be illustrated with `30`, which for a playback
+   * multiplier is not a typo away from right - it is thirty times speed, and
+   * reads as though the flag takes seconds.
+   */
+  readonly example?: string | number;
+  /** Bounds for a numeric flag. Outside them the value produces nothing usable. */
+  readonly min?: number;
+  readonly max?: number;
   /** Collect every occurrence instead of keeping the last. String flags only. */
   readonly repeat?: boolean;
 }
@@ -83,14 +94,33 @@ function unknownFlag(name: string, specs: FlagSpecs): never {
   throw new ScreencastError(`Unknown flag: --${name}`, "VALIDATION_ERROR", help);
 }
 
-function numeric(name: string, raw: string): number {
+function numeric(name: string, raw: string, spec: FlagSpec): number {
+  const example = `Example: --${name} ${spec.example ?? 30}`;
   const value = Number(raw);
   if (!Number.isFinite(value)) {
     throw new ScreencastError(`--${name} expects a number, got \`${raw}\``, "VALIDATION_ERROR", [
-      `Example: --${name} 30`,
+      example,
     ]);
   }
+
+  // Checked here rather than wherever the value lands, so a nonsensical one is
+  // refused before a browser opens. `--pace 0` used to record a zero-second
+  // clip and then advise re-cutting it slower.
+  const { min, max } = spec;
+  if ((min !== undefined && value < min) || (max !== undefined && value > max)) {
+    throw new ScreencastError(
+      `--${name} has to be ${describeRange(min, max)}, got ${value}`,
+      "VALIDATION_ERROR",
+      [example],
+    );
+  }
   return value;
+}
+
+function describeRange(min: number | undefined, max: number | undefined): string {
+  if (min !== undefined && max !== undefined) return `between ${min} and ${max}`;
+  if (min !== undefined) return `at least ${min}`;
+  return `at most ${max}`;
 }
 
 /**
@@ -148,7 +178,7 @@ export function parseFlags(args: readonly string[], specs: FlagSpecs): ParsedArg
     }
 
     if (spec.kind === "number") {
-      flags[name] = numeric(name, raw);
+      flags[name] = numeric(name, raw, spec);
     } else if (spec.repeat) {
       const existing = flags[name];
       flags[name] = Array.isArray(existing) ? [...existing, raw] : [raw];

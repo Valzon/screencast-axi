@@ -113,6 +113,36 @@ export function looksLikeScenario(value: unknown): value is Scenario {
   );
 }
 
+/**
+ * Which required fields a near-miss is missing.
+ *
+ * `looksLikeScenario` answers yes or no, which is the right question for
+ * discovery and the wrong one for an error message: a default export with
+ * everything but `description` was reported as "no scenario exported by this
+ * file", and every suggestion that followed told the author to do what they
+ * had already done. Empty means it is a scenario.
+ */
+export function missingScenarioFields(value: unknown): string[] {
+  if (typeof value !== "object" || value === null) return ["the whole object"];
+  const v = value as Record<string, unknown>;
+  const missing: string[] = [];
+  if (typeof v["id"] !== "string" || v["id"].length === 0) missing.push("id");
+  if (typeof v["title"] !== "string") missing.push("title");
+  if (typeof v["description"] !== "string") missing.push("description");
+  if (typeof v["run"] !== "function") missing.push("run");
+  return missing;
+}
+
+/**
+ * Whether a value is close enough to a scenario that a missing field is worth
+ * reporting, rather than it being some unrelated default export.
+ */
+export function nearlyAScenario(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return typeof v["run"] === "function" || typeof v["id"] === "string";
+}
+
 export function isScenario(value: unknown): value is DefinedScenario {
   return (
     typeof value === "object" &&

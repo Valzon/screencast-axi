@@ -5,6 +5,7 @@ import { buildInventory, filesOf, summarise, type InventoryRow } from "../invent
 import { parseFlags, type FlagSpecs } from "../flags.js";
 import type { AxiStructuredOutput } from "../output.js";
 import { ScreencastError } from "../errors.js";
+import { closest } from "../nearest.js";
 
 export const LIST_FLAGS: FlagSpecs = {
   config: { kind: "string", description: "Path to a config file", placeholder: "path" },
@@ -107,7 +108,12 @@ export async function showCommand(args: string[]): Promise<AxiStructuredOutput> 
   const row = inventory.rows.find((r) => r.id === id);
   if (!row) {
     const orphan = inventory.orphans.find((o) => o.id === id);
+    const meant = closest(
+      id,
+      inventory.rows.map((r) => r.id),
+    );
     throw new ScreencastError(`Unknown scenario: ${id}`, "UNKNOWN_SCENARIO", [
+      ...(meant ? [`Did you mean \`screencast-axi show ${meant}\`?`] : []),
       orphan
         ? `\`${id}\` is in the manifest but has no scenario any more - see \`screencast-axi check\``
         : `This config has: ${inventory.rows.map((r) => r.id).join(", ") || "nothing"}`,

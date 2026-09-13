@@ -26,3 +26,29 @@ export class ScreencastError extends Error {
 export function isScreencastError(value: unknown): value is ScreencastError {
   return value instanceof ScreencastError;
 }
+
+/**
+ * A finished report whose content is a failure.
+ *
+ * `check` and `doctor` answer a question rather than performing an action, and
+ * their answer can be "this library is broken" - which is a full, well-formed
+ * report, not an error. They returned it and exited 0, so a CI step that ran
+ * either of them passed while the tool was saying eight things were wrong.
+ *
+ * Thrown rather than returned purely to reach the exit code: the payload is
+ * rendered exactly as it would have been on the way out, so nothing about the
+ * output changes except the status.
+ */
+export class FailingReport extends Error {
+  readonly payload: Record<string, unknown>;
+
+  constructor(payload: Record<string, unknown>) {
+    super("report describes a failure");
+    this.name = "FailingReport";
+    this.payload = payload;
+  }
+}
+
+export function isFailingReport(value: unknown): value is FailingReport {
+  return value instanceof FailingReport;
+}

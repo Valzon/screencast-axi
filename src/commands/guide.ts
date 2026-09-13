@@ -2,6 +2,7 @@ import { ScreencastError } from "../errors.js";
 import { parseFlags, type FlagSpecs } from "../flags.js";
 import type { AxiStructuredOutput } from "../output.js";
 import { NPX_INVOCATION } from "../skill.js";
+import { closest } from "../nearest.js";
 
 /**
  * Topic-sized guidance, pulled one topic at a time.
@@ -84,13 +85,24 @@ const TOPICS: Record<string, Topic> = {
       "",
       "The video is captured at the CSS viewport, so a phone clip is 390x664",
       "rather than the 1170x1992 the device would render at. That is a",
-      "Playwright limit, not a setting: it composites the page into the video",
-      "canvas without scaling up, so asking for more just leaves empty space",
-      "around the page. deviceScaleFactor still affects how the page renders",
-      "and which images it picks, but not the resolution of the recording.",
+      "Playwright limit, not a setting: it never scales the page up into a",
+      "larger canvas. deviceScaleFactor still affects how the page renders and",
+      "which images it picks, but not the resolution of the recording.",
       "",
-      "Playwright ships 140+ presets; the names are its own and are",
-      "case-sensitive. `--viewport 390x844` works when no preset fits.",
+      "Coming the other way, a capture is bounded and the deliverable is",
+      "scaled to `deliverables.width` - 1280 by default - so a 2560-wide",
+      "viewport is laid out at 2560 and written as a 1280-wide file. Both",
+      "numbers are reported: `viewport` is the layout, `output` is the file.",
+      "",
+      "A scenario can carry its own `viewport` or `device`, which is how",
+      "`record --all` shoots each clip at its own size:",
+      "",
+      '  export default { id: "phone", device: "iPhone 13", ... }',
+      "",
+      "Presets are Playwright's own and case-sensitive; `screencast-axi",
+      "record --device nonsense` lists how many there are and suggests the",
+      "nearest. `--viewport 390x844` works when no preset fits, and a preset",
+      "plus a viewport keeps the preset's user agent at the size you gave.",
     ],
   },
   duration: {
@@ -143,7 +155,9 @@ const TOPICS: Record<string, Topic> = {
       "goto. (The failure output names the URL it actually reached, so this is",
       "a fast one to spot.)",
       "",
-      "`screencast-axi scaffold <id> --tour 5` writes the whole skeleton.",
+      "`screencast-axi scaffold <id> --tour 5` writes a skeleton with five",
+      "stops, spelled out as goto/step/scroll rather than as `tour()` - fill",
+      "in the paths, or collapse them into a `tour()` call like the one above.",
       "Every pause is pace-scaled, so --duration re-cuts a tour untouched.",
     ],
   },
@@ -314,6 +328,9 @@ export function guideCommand(args: string[]): AxiStructuredOutput {
   const found = TOPICS[topic];
   if (!found) {
     throw new ScreencastError(`Unknown guide topic: ${topic}`, "VALIDATION_ERROR", [
+      ...(closest(topic, Object.keys(TOPICS))
+        ? [`Did you mean \`screencast-axi guide ${closest(topic, Object.keys(TOPICS))}\`?`]
+        : []),
       `Available topics: ${Object.keys(TOPICS).join(", ")}`,
       "Run `screencast-axi guide` to list them with summaries",
     ]);

@@ -9,10 +9,13 @@ import {
   defineScenario,
   isScenario,
   looksLikeScenario,
+  missingScenarioFields,
+  nearlyAScenario,
   type DefinedScenario,
   type Viewport,
 } from "./types.js";
 import { importFromProject } from "./resolve.js";
+import { nearest } from "./nearest.js";
 import { noAuth } from "./auth/strategies.js";
 import type { AuthConfig, AuthStrategy } from "./auth/types.js";
 
@@ -236,17 +239,44 @@ function selfImportFailure(file: string, error: unknown): ScreencastError | null
   );
 }
 
+/**
+ * What to say about a path that is not a scenario.
+ *
+ * The path is almost always nearly right - a typo, the wrong extension, a
+ * directory instead of the file in it - and the file meant is usually sitting
+ * beside it. Naming that file is the difference between a correct error and a
+ * useful one.
+ */
+function missingFile(file: string): ScreencastError {
+  const { suggestion, siblings, dir, isDirectory } = nearest(file);
+  const shown = siblings.slice(0, 6);
+
+  return new ScreencastError(
+    isDirectory ? `That is a directory, not a scenario: ${file}` : `No such file: ${file}`,
+    "SCENARIO_NOT_FOUND",
+    [
+      ...(suggestion ? [`Did you mean ${relative(process.cwd(), suggestion)}?`] : []),
+      ...(shown.length > 0
+        ? [
+            `${relative(process.cwd(), dir) || "."} holds: ${shown.join(", ")}` +
+              (siblings.length > shown.length
+                ? `, and ${siblings.length - shown.length} more`
+                : ""),
+          ]
+        : [`Nothing loadable in ${relative(process.cwd(), dir) || "."}`]),
+      ...(isDirectory
+        ? ["Pass one file, or list the directory in the config's `scenarios`"]
+        : ["Paths are resolved from the working directory"]),
+      "`screencast-axi list` shows every scenario the config knows about",
+    ],
+  );
+}
+
 async function importModule(file: string): Promise<Record<string, unknown>> {
   // Checked before the import, because Node's own message for a missing file
   // names it as a module "imported from" somewhere inside this package - which
   // reads like a broken install rather than the typo it almost always is.
-  if (!existsSync(file)) {
-    throw new ScreencastError(`No such file: ${file}`, "SCENARIO_NOT_FOUND", [
-      "Check the path - it is resolved from the working directory",
-      "`screencast-axi list` shows every scenario the config knows about",
-      "`screencast-axi scaffold <id> --url <url>` writes a new one",
-    ]);
-  }
+  if (!existsSync(file) || statSync(file).isDirectory()) throw missingFile(file);
 
   const url = pathToFileURL(file).href;
   try {
@@ -285,11 +315,62 @@ export async function loadConfig(explicit?: string, cwd = process.cwd()): Promis
   return resolveConfig(raw, configPath, cwd);
 }
 
+/**
+ * Checks the shapes a config's own types promise but a plain object can break.
+ *
+ * A config is a TypeScript file, so these are all caught by an editor - and
+ * every one of them was still reachable, because the file is loaded at runtime
+ * and nothing verified it. The worst was `scenarios` written as a string
+ * rather than an array: iterating it yields single characters, each treated as
+ * a glob, and the resulting walk started at the filesystem root and ran for
+ * ten minutes before it was killed.
+ */
+function assertConfigShape(raw: ScreencastConfig, from: string | null): void {
+  const where = from ? relative(process.cwd(), from) : "the config";
+  const bad = (field: string, wanted: string, got: unknown): never => {
+    throw new ScreencastError(`${where}: \`${field}\` should be ${wanted}`, "INVALID_CONFIG", [
+      `Got ${describeValue(got)}`,
+      ...(field === "scenarios"
+        ? ['A single pattern still goes in an array: `scenarios: ["scenarios/*.ts"]`']
+        : []),
+    ]);
+  };
+
+  const r = raw as Record<string, unknown>;
+  if (r["scenarios"] !== undefined && !Array.isArray(r["scenarios"])) {
+    bad("scenarios", "an array of paths or globs", r["scenarios"]);
+  }
+  if (Array.isArray(r["scenarios"]) && r["scenarios"].some((p) => typeof p !== "string")) {
+    bad("scenarios", "an array of paths or globs", r["scenarios"]);
+  }
+  for (const field of ["outDir", "rawDir", "baseUrl"]) {
+    if (r[field] !== undefined && typeof r[field] !== "string") bad(field, "a string", r[field]);
+  }
+  if (r["pace"] !== undefined && typeof r["pace"] !== "number") bad("pace", "a number", r["pace"]);
+  const viewport = r["viewport"] as Record<string, unknown> | undefined;
+  if (viewport !== undefined) {
+    for (const edge of ["width", "height"]) {
+      if (!Number.isFinite(viewport[edge])) {
+        bad(`viewport.${edge}`, "a number", viewport[edge]);
+      }
+    }
+  }
+}
+
+function describeValue(value: unknown): string {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return `an array containing ${value.map((v) => typeof v).join(", ")}`;
+  if (typeof value === "string") return `the string \`${value}\``;
+  return `a ${typeof value}`;
+}
+
 export function resolveConfig(
   raw: ScreencastConfig,
   configPath: string | null,
   cwd = process.cwd(),
 ): ResolvedConfig {
+  assertConfigShape(raw, configPath);
+
   // Relative paths anchor to the config file, never to the shell's cwd -
   // otherwise the same command means different things from different
   // directories in the same repo.
@@ -380,6 +461,18 @@ export function expandScenarioPattern(pattern: string, rootDir: string): string[
   return walk(dir, recursive).filter((f) => (suffix ? f.endsWith(suffix) : true));
 }
 
+/** Ids are file stems, so they follow the same rule `scaffold` writes them by. */
+const SCENARIO_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/** A best effort at what the author probably meant, for the error to suggest. */
+function slugify(id: string): string {
+  const slug = id
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug || "clip";
+}
+
 export interface LoadedScenario {
   readonly scenario: DefinedScenario;
   /** Absolute path of the module it came from, for error messages. */
@@ -431,6 +524,23 @@ export async function loadScenarioFiles(files: readonly string[]): Promise<Loade
     const found = [...new Set(candidates)].map((s) => (isScenario(s) ? s : defineScenario(s)));
 
     if (found.length === 0) {
+      // A default export that is *nearly* a scenario is a different problem
+      // with a different fix, and answering it with "no scenario exported"
+      // sent authors looking for a missing export they had already written.
+      const candidate = defaults.find((v) => nearlyAScenario(v));
+      if (candidate) {
+        const missing = missingScenarioFields(candidate);
+        throw new ScreencastError(
+          `${relative(process.cwd(), file)} exports a scenario missing ${missing.join(", ")}`,
+          "INCOMPLETE_SCENARIO",
+          [
+            `Add ${missing.map((m) => `\`${m}\``).join(" and ")} to the default export`,
+            "`id`, `title` and `description` are strings; `run` is a function taking the director",
+            '`import type { Scenario } from "screencast-axi"` and `satisfies Scenario` catch this before it runs',
+          ],
+        );
+      }
+
       throw new ScreencastError(`No scenario exported by ${file}`, "NO_SCENARIO", [
         "Make it the default export: `export default { id, title, description, run } satisfies Scenario`",
         'Type it with `import type { Scenario } from "screencast-axi"`, which leaves no runtime import',
@@ -439,6 +549,21 @@ export async function loadScenarioFiles(files: readonly string[]): Promise<Loade
     }
 
     for (const scenario of found) {
+      // The id is the output file stem, so anything that is not a filename
+      // fails at the encoder - after a full browser take has already been
+      // shot. `scaffold` enforces the same rule when it writes one.
+      if (!SCENARIO_ID.test(scenario.id)) {
+        throw new ScreencastError(
+          `\`${scenario.id}\` cannot be a scenario id`,
+          "INVALID_SCENARIO_ID",
+          [
+            `In ${relative(process.cwd(), file)}`,
+            "Ids become the file name of every deliverable, so they are lower case, digits and dashes",
+            `Try \`${slugify(scenario.id)}\``,
+          ],
+        );
+      }
+
       const previous = seen.get(scenario.id);
       if (previous) {
         // Two clips writing the same file stem would silently overwrite each

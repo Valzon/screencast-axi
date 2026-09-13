@@ -1,6 +1,7 @@
 import { access, constants, mkdir } from "node:fs/promises";
 import { loadConfig, resolveConfigPath } from "../config.js";
 import { parseFlags, type FlagSpecs } from "../flags.js";
+import { FailingReport } from "../errors.js";
 import type { AxiStructuredOutput } from "../output.js";
 import { detectToolchain, installHint, run } from "../toolchain.js";
 import { resolvePlaywright } from "../browser.js";
@@ -128,7 +129,7 @@ export async function doctorCommand(args: string[]): Promise<AxiStructuredOutput
   const broken = findings.filter((f) => !f.ok);
   const fixes = findings.filter((f) => f.fix).map((f) => `${f.what}: ${f.fix}`);
 
-  return {
+  const report = {
     ready: broken.length === 0,
     checks: findings.map((f) => ({
       what: f.what,
@@ -144,6 +145,11 @@ export async function doctorCommand(args: string[]): Promise<AxiStructuredOutput
         ? fixes
         : ["Everything a recording needs is in place. `screencast-axi record <id>`"],
   };
+
+  // `ready: false` and exit 0 meant a CI step that ran this passed on a
+  // machine that cannot record. The report is unchanged; only the status is.
+  if (broken.length > 0) throw new FailingReport(report);
+  return report;
 }
 
 /** Exposed for `setup`, which needs the same probe. */

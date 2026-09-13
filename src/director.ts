@@ -23,6 +23,8 @@ export interface DirectorOptions {
    * silently, because the failure is caught and ignored.
    */
   readonly settleMs?: number;
+  /** Where a warning about the scenario's own setup goes. */
+  log?(message: string): void;
 }
 
 /** One thing the scenario did, for the run to report afterwards. */
@@ -189,6 +191,7 @@ export class Director {
 
   async goto(path: string): Promise<void> {
     const url = path.startsWith("http") ? path : new URL(path, this.opts.baseUrl).toString();
+    this.warnIfBasePathDropped(path, url);
     const opening = this.blankUntil !== null && this.actions.length === this.blankUntil;
     this.record("goto", url);
     await this.page.goto(url, { waitUntil: "domcontentloaded" });
@@ -203,6 +206,34 @@ export class Director {
     if (opening) this.clipStartedAt = Date.now();
     this.blankUntil = null;
   }
+
+  /**
+   * The trap the generated config warns about, caught where it happens.
+   *
+   * A `baseUrl` carrying a path plus a `goto("/thing")` resolves against the
+   * origin and drops the path - correct URL behaviour, and almost never what
+   * the author meant. It used to be invisible: the run header printed the
+   * baseUrl with its path, the navigation went somewhere else, and every
+   * selector afterwards "failed" against a page nobody asked for.
+   */
+  private warnIfBasePathDropped(path: string, resolved: string): void {
+    if (this.warnedAboutBasePath || !path.startsWith("/")) return;
+    let base: URL;
+    try {
+      base = new URL(this.opts.baseUrl);
+    } catch {
+      return;
+    }
+    if (base.pathname === "/" || base.pathname === "") return;
+
+    this.warnedAboutBasePath = true;
+    this.opts.log?.(
+      `baseUrl carries the path \`${base.pathname}\`, and \`${path}\` is absolute, ` +
+        `so it resolved to ${resolved}. Use a relative path, or put the origin alone in baseUrl.`,
+    );
+  }
+
+  private warnedAboutBasePath = false;
 
   /** Which script lines this take put on screen, in order. */
   get shownSteps(): readonly number[] {
