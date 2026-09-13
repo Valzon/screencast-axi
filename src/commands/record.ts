@@ -16,6 +16,7 @@ import {
 } from "../run.js";
 import { readMeasurement, type MeasurementKey } from "../measure.js";
 import { readManifest } from "../manifest.js";
+import { buildInventory } from "../inventory.js";
 import { parseDuration, solvePace, type PaceSolution } from "../duration.js";
 import { detectToolchain } from "../toolchain.js";
 import type { DefinedScenario } from "../types.js";
@@ -45,6 +46,10 @@ export const RECORD_FLAGS: FlagSpecs = {
   },
   out: { kind: "string", description: "Output directory", placeholder: "dir" },
   all: { kind: "boolean", description: "Record every scenario the config lists" },
+  "if-changed": {
+    kind: "boolean",
+    description: "Skip clips already recorded from the current scenario",
+  },
   full: { kind: "boolean", description: "Include the full action log" },
   gif: { kind: "boolean", description: "Also emit a looping GIF" },
   webp: { kind: "boolean", description: "Also emit a looping WebP (half a GIF's size)" },
@@ -148,6 +153,31 @@ async function measurementKey(
   };
 }
 
+/**
+ * Narrows a selection to the clips that actually need re-shooting.
+ *
+ * The companion of `check`, which is where someone learns that three of
+ * fifteen clips have drifted. Without it the only way to act on that is
+ * `record --all`, which re-shoots the twelve that were fine - minutes of
+ * browser time and twelve identical files rewritten.
+ *
+ * "Changed" is the inventory's own judgement, so this and `check` cannot
+ * disagree: anything not `recorded` (stale narration, an edited scenario, a
+ * missing deliverable, never recorded at all) is in.
+ */
+async function onlyChanged(
+  selected: readonly Selected[],
+  config: ResolvedConfig,
+  flags: Record<string, unknown>,
+): Promise<Selected[]> {
+  if (flags["if-changed"] !== true) return [...selected];
+  const inventory = await buildInventory(config);
+  const needsWork = new Set(
+    inventory.rows.filter((row) => row.status !== "recorded").map((row) => row.id),
+  );
+  return selected.filter((s) => needsWork.has(s.scenario.id));
+}
+
 function viewportOf(value: unknown): { width: number; height: number } | undefined {
   if (value === undefined) return undefined;
   const match = /^(\d+)\s*[x×]\s*(\d+)$/.exec(String(value).trim());
@@ -237,10 +267,16 @@ export async function recordCommand(args: string[], mode: RunMode): Promise<AxiS
   }
 
   const config = await loadConfig(flags["config"] as string | undefined);
-  const selected = await select(positionals, config, all);
+  const selected = await onlyChanged(await select(positionals, config, all), config, flags);
 
   if (selected.length === 0) {
-    return { [mode]: [], totals: "0 scenarios matched", help: ["Run `screencast-axi list`"] };
+    return flags["if-changed"] === true
+      ? {
+          [mode]: [],
+          totals: "nothing has changed",
+          help: ["Every configured clip is recorded from its current scenario"],
+        }
+      : { [mode]: [], totals: "0 scenarios matched", help: ["Run `screencast-axi list`"] };
   }
 
   // Probed once for the batch rather than per clip, and before any browser
