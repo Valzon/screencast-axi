@@ -34,6 +34,13 @@ export interface Measurement {
   readonly width: number;
   readonly height: number;
   readonly device?: string;
+  /**
+   * The settings that change how long a take runs without changing what it
+   * does: the settle ceiling above all, which `guide duration` explicitly
+   * tells people to raise and which feeds the unscaled half of the model.
+   * Hashed together so one field covers the lot.
+   */
+  readonly timingHash?: string;
   readonly recorderVersion: string;
   /** What a pace-1 take measured, in ms. */
   readonly durationMs: number;
@@ -51,6 +58,17 @@ export interface MeasurementKey {
   readonly width: number;
   readonly height: number;
   readonly device?: string;
+  /** Everything else that moves the clock. See `Measurement.timingHash`. */
+  readonly timing: {
+    readonly settleMs: number;
+    readonly rehearseMs: number;
+    readonly actionMs: number;
+    readonly pace: number;
+  };
+}
+
+function timingHashOf(key: MeasurementKey): string {
+  return hashText(JSON.stringify(key.timing));
 }
 
 function fileFor(rawDir: string, id: string): string {
@@ -73,6 +91,7 @@ export function matches(entry: Measurement, key: MeasurementKey): boolean {
     entry.width === key.width &&
     entry.height === key.height &&
     (entry.device ?? null) === (key.device ?? null) &&
+    entry.timingHash === timingHashOf(key) &&
     entry.recorderVersion === VERSION &&
     Number.isFinite(entry.durationMs) &&
     Number.isFinite(entry.scaledPauseMs)
@@ -110,6 +129,7 @@ export function writeMeasurement(
     width: key.width,
     height: key.height,
     ...(key.device ? { device: key.device } : {}),
+    timingHash: timingHashOf(key),
     recorderVersion: VERSION,
     durationMs: result.durationMs,
     scaledPauseMs: result.scaledPauseMs,

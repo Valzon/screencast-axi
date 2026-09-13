@@ -339,6 +339,12 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
           width: viewport.viewport.width,
           height: viewport.viewport.height,
           ...(viewport.device ? { device: viewport.device } : {}),
+          timing: {
+            settleMs: config.timeouts.settleMs,
+            rehearseMs: config.timeouts.rehearseMs,
+            actionMs: config.timeouts.actionMs,
+            pace,
+          },
         },
         { durationMs, scaledPauseMs: director.scaledPauseMs },
       );
@@ -387,6 +393,7 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
     id: scenario.id,
     trimStart,
     posterAt,
+    durationSeconds: durationMs / 1000,
     ...(toolchain ? { toolchain } : {}),
   });
 

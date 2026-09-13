@@ -81,6 +81,15 @@ export interface EncodeOptions extends EncodeSettings {
    * over the page. A moment later everything has settled.
    */
   readonly posterAt?: number;
+  /**
+   * How much of the capture, after the trim, is the clip.
+   *
+   * The raw video keeps rolling through teardown and the context close, so
+   * without this the file ran past the take the manifest describes - by up to
+   * 0.85s on a slow-paced clip, which is how a recorder ends up claiming one
+   * length and delivering another.
+   */
+  readonly durationSeconds?: number;
   /** Pre-detected toolchain, so a batch does not re-probe per clip. */
   readonly toolchain?: Toolchain;
 }
@@ -150,6 +159,13 @@ export async function encode(opts: EncodeOptions): Promise<EncodeResult> {
     // Input seek: `-ss` before `-i` is the fast, frame-accurate-enough form for
     // trimming dead air off the head.
     const trim = opts.trimStart > 0.05 ? ["-ss", opts.trimStart.toFixed(2)] : [];
+    // An output option, not an input one: measured on a real capture, `-t`
+    // before `-i` came out 33ms long while after it landed exactly. A poster is
+    // a single frame and takes none of this.
+    const limit =
+      opts.durationSeconds !== undefined && opts.durationSeconds > 0.05
+        ? ["-t", opts.durationSeconds.toFixed(3)]
+        : [];
     // `-2` keeps the height even, which h264's yuv420p requires.
     const scale = `scale=${opts.width}:-2:flags=lanczos`;
 
@@ -180,6 +196,7 @@ export async function encode(opts: EncodeOptions): Promise<EncodeResult> {
       "yuv420p",
       "-movflags",
       "+faststart",
+      ...limit,
       mp4,
     ]);
 
@@ -201,6 +218,7 @@ export async function encode(opts: EncodeOptions): Promise<EncodeResult> {
       "1",
       "-deadline",
       "good",
+      ...limit,
       webm,
     ]);
 
@@ -232,6 +250,7 @@ export async function encode(opts: EncodeOptions): Promise<EncodeResult> {
         opts.input,
         "-vf",
         `${gifScale},palettegen=max_colors=192:stats_mode=diff`,
+        ...limit,
         palette,
       ]);
       await runOrThrow(ffmpeg, [
@@ -245,6 +264,7 @@ export async function encode(opts: EncodeOptions): Promise<EncodeResult> {
         `${gifScale}[x];[x][1:v]paletteuse=dither=sierra2_4a:diff_mode=rectangle`,
         "-loop",
         "0",
+        ...limit,
         gif,
       ]);
       await rm(palette, { force: true });

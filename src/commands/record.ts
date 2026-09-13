@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 import { loadConfig, loadScenarioFiles, loadScenarios, type ResolvedConfig } from "../config.js";
-import { ScreencastError } from "../errors.js";
+import { FailingReport, ScreencastError } from "../errors.js";
 import { parseFlags, type FlagSpecs } from "../flags.js";
 import type { AxiStructuredOutput } from "../output.js";
 import {
@@ -173,6 +173,12 @@ async function measurementKey(
     width: viewport.viewport.width,
     height: viewport.viewport.height,
     ...(viewport.device ? { device: viewport.device } : {}),
+    timing: {
+      settleMs: options.config.timeouts.settleMs,
+      rehearseMs: options.config.timeouts.rehearseMs,
+      actionMs: options.config.timeouts.actionMs,
+      pace: 1,
+    },
   };
 }
 
@@ -273,6 +279,32 @@ function truncate(text: string, full: boolean): string {
   return full || text.length <= 70 ? text : `${text.slice(0, 67)}...`;
 }
 
+/** How far a finished take may land from its target before it is worth saying. */
+const TARGET_TOLERANCE = 0.1;
+
+/**
+ * Whether the take that came out is the length that was asked for.
+ *
+ * The pace is solved before the take, from one measuring pass, and the site's
+ * own waiting is the half that pass cannot promise - so a slow navigation
+ * blows the budget and the clip lands somewhere else entirely. The recorder
+ * knew: it printed `target_s: 20` and `duration_s: 51.1` in the same block and
+ * said nothing about the gap. Checked afterwards, against the take itself.
+ */
+function missedTarget(durationMs: number, solution: PaceSolution): Record<string, string> {
+  const off = (durationMs - solution.targetMs) / solution.targetMs;
+  if (Math.abs(off) <= TARGET_TOLERANCE) return {};
+
+  const longer = off > 0;
+  return {
+    missed_target:
+      `${Math.round(Math.abs(off) * 100)}% ${longer ? "longer" : "shorter"} than the ` +
+      `${(solution.targetMs / 1000).toFixed(0)}s asked for - the site's own waiting ` +
+      `${longer ? "overran" : "came in under"} what the measuring pass saw` +
+      (solution.clamped ? ", and the pace was already at its limit" : ""),
+  };
+}
+
 function describe(
   result: RunResult,
   solution?: PaceSolution,
@@ -301,6 +333,7 @@ function describe(
           // Which of the two browser passes this take actually cost.
           measured: reusedMeasurement ? "reused from an earlier pass" : "this run",
           ...(solution.warning ? { warning: solution.warning } : {}),
+          ...missedTarget(result.durationMs, solution),
         }
       : {}),
     ...(result.viewport.device ? { device: result.viewport.device } : {}),
@@ -337,9 +370,15 @@ export async function recordCommand(args: string[], mode: RunMode): Promise<AxiS
   const orientation = orientationOf(flags["orientation"]);
   const viewport = viewportOf(flags["viewport"]);
 
+  // `--out` moves where clips are written, so it also moves the manifest that
+  // says what is already there. Reading the config's directory while writing
+  // to another made `--if-changed` a guaranteed miss that never said why.
+  const outDir = flags["out"] ? resolve(process.cwd(), flags["out"] as string) : config.outDir;
+  const against: ResolvedConfig = outDir === config.outDir ? config : { ...config, outDir };
+
   const selected = await onlyChanged(
     await select(positionals, config, all),
-    config,
+    against,
     flags,
     (scenario) =>
       viewportFor({
@@ -402,6 +441,8 @@ export async function recordCommand(args: string[], mode: RunMode): Promise<AxiS
   const solutions = new Map<string, PaceSolution>();
   /** Scenarios whose natural length came from a previous pass rather than a new one. */
   const reused = new Set<string>();
+  /** What did not record, so a batch can report it rather than stop at it. */
+  const failed: { id: string; error: unknown }[] = [];
   for (const { scenario, file } of selected) {
     const sourceText = await readFile(file, "utf8").catch(() => undefined);
 
@@ -465,10 +506,22 @@ export async function recordCommand(args: string[], mode: RunMode): Promise<AxiS
       if (solution.warning) process.stderr.write(`${scenario.id}: ${solution.warning}\n`);
     }
 
-    results.push(await runScenario({ ...base, mode, ...(pace !== undefined ? { pace } : {}) }));
+    // A batch carries on. One scenario failing used to abort the run at that
+    // point, so the clips after it were never attempted and never mentioned -
+    // and the ones before it, already written, went unreported too. A single
+    // target still throws, because there is nothing else to say.
+    try {
+      results.push(await runScenario({ ...base, mode, ...(pace !== undefined ? { pace } : {}) }));
+    } catch (error) {
+      if (selected.length === 1) throw error;
+      failed.push({ id: scenario.id, error });
+      process.stderr.write(`${scenario.id}: failed, carrying on\n`);
+    }
   }
 
-  if (results.length === 1) {
+  // The single-clip report only applies when a single clip is the whole story.
+  // With a failure alongside it, the batch report is the honest one.
+  if (results.length === 1 && failed.length === 0) {
     const only = results[0] as RunResult;
     const full = flags["full"] === true;
     // A rehearsal is where someone checks what a scenario does before trusting
@@ -482,14 +535,46 @@ export async function recordCommand(args: string[], mode: RunMode): Promise<AxiS
     };
   }
 
-  return {
+  const batch = {
     [mode === "record" ? "recorded" : "rehearsed"]: results.map((r) => ({
       id: r.id,
       duration_s: Number((r.durationMs / 1000).toFixed(1)),
+      ...(solutions.get(r.id)
+        ? {
+            target_s: Number(((solutions.get(r.id) as PaceSolution).targetMs / 1000).toFixed(1)),
+            pace: r.pace,
+            ...missedTarget(r.durationMs, solutions.get(r.id) as PaceSolution),
+            ...((solutions.get(r.id) as PaceSolution).warning
+              ? { warning: (solutions.get(r.id) as PaceSolution).warning }
+              : {}),
+          }
+        : {}),
     })),
-    totals: `${results.length} scenarios`,
-    help: [`Run \`screencast-axi show <id>\` for one clip in full`],
+    ...(failed.length > 0
+      ? {
+          failed: failed.map((f) => ({
+            id: f.id,
+            error: f.error instanceof Error ? f.error.message : String(f.error),
+          })),
+        }
+      : {}),
+    totals:
+      failed.length > 0
+        ? `${results.length} of ${results.length + failed.length} scenarios`
+        : `${results.length} scenarios`,
+    help:
+      failed.length > 0
+        ? [
+            `\`screencast-axi rehearse ${failed[0]?.id}\` to see why that one failed`,
+            "Everything else in the batch was recorded",
+          ]
+        : [`Run \`screencast-axi show <id>\` for one clip in full`],
   };
+
+  // Some of the batch did not record, so the status says so - while the report
+  // still lists everything that did.
+  if (failed.length > 0) throw new FailingReport(batch);
+  return batch;
 }
 
 function nextSteps(result: RunResult, showedLog = false): string[] {
