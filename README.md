@@ -71,6 +71,10 @@ pnpm exec screencast-axi record   ./scenarios/product-tour.ts
 a minute - and the failure comes back with the URL it reached, a screenshot, and what each part of
 the selector actually matched.
 
+A clip recorded by path is a first-class clip: the manifest records which file it came from, so
+`list`, `show`, `check` and a later `record <id>` all find it without a config listing it. Adding
+a config later is what puts it in `record --all`.
+
 A scenario is TypeScript, and a plain object:
 
 ```ts
@@ -269,6 +273,15 @@ One measuring pass, then it solves for the pace that lands near the target. A ta
 the solve uses the measured split rather than assuming everything scales. Pace is clamped to a
 watchable range, and a target outside it is reported rather than obeyed.
 
+The measuring pass is the most expensive thing `record` does, so its result is kept and reused:
+rehearse first and the take that follows needs one browser pass instead of two. Anything that
+would change the timing - an edit to the scenario or its narration, another viewport, device or
+origin, a new version of the recorder - measures again rather than trusting a stale number. The
+output says which happened.
+
+A scenario can carry its own `targetDurationMs` so the length lives with the clip; `--duration`
+overrides it, and an explicit `--pace` overrides both.
+
 ### Emits what the destination needs
 
 mp4 and webm every time, plus a poster frame. `--gif` and `--webp` add looping images for the
@@ -306,8 +319,14 @@ object written in the config - typed and debuggable rather than a shelled-out sc
 
 ## Output formats
 
-Every take produces an mp4, a webm and a poster. Looping images are opt-in with `--gif` and
-`--webp`, for the places a `<video>` does not render - a README, an npm page, an email.
+Every take produces an mp4, a webm and a poster, all three encoded at once. Looping images are
+opt-in with `--gif` and `--webp`, for the places a `<video>` does not render - a README, an npm
+page, an email.
+
+The webm is offered first and the mp4 is the fallback, so the webm only earns its place by being
+the smaller of the two. That is what `webm.crf` is tuned for: measured on a 1280x800 ten-second
+take, the webm is 796 KB against the mp4's 1,056 KB, with no visible difference on text. VP9 and
+h264 do not share a CRF scale, so the two numbers in the config are not comparable to each other.
 
 Measured on a real 16.7s app screencast, all at 800px and 15fps:
 
@@ -326,10 +345,16 @@ paused, and ignores `prefers-reduced-motion`. It is an export, not a storage for
 
 Optional. `screencast.config.ts` at the repo root, found by walking up from the working directory:
 
-```ts
-import { defineConfig, profileAuth } from "screencast-axi";
+`init` writes one with a type-only import, so it loads in a project that has not installed the
+package. Import `defineConfig` instead if you would rather have the call, and `profileAuth` and
+the other auth strategies are real imports either way - a config that uses one needs the package
+installed beside it.
 
-export default defineConfig({
+```ts
+import type { ScreencastConfig } from "screencast-axi";
+import { profileAuth } from "screencast-axi";
+
+export default {
   baseUrl: "http://localhost:3000",
   scenarios: ["scenarios/*.ts"],
   outDir: "public/demos",
@@ -343,7 +368,7 @@ export default defineConfig({
     // Page chrome that should not end up in the footage.
     hideSelectors: ["#cookie-banner", "nextjs-portal"],
   },
-});
+} satisfies ScreencastConfig;
 ```
 
 Relative paths resolve against the config file, never the shell's working directory, so a command
@@ -440,6 +465,7 @@ screencast-axi record <id|path...>
 | `--duration <30s>`     | Aim for this length, e.g. 30s (measures first, then solves for pace). |
 | `--out <dir>`          | Output directory.                                                     |
 | `--all`                | Record every scenario the config lists.                               |
+| `--if-changed`         | Skip clips already recorded from the current scenario.                |
 | `--full`               | Include the full action log.                                          |
 | `--gif`                | Also emit a looping GIF.                                              |
 | `--webp`               | Also emit a looping WebP (half a GIF's size).                         |
