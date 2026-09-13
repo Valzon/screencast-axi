@@ -265,6 +265,20 @@ Note the password: a field the log would otherwise leak records its shape and no
 so a redirect or a navigation buried in `setup()` shows up too. A list of one host reads very
 differently from a list of nine.
 
+### Says what it produced, not what it was asked for
+
+A page is laid out at the viewport you give; the file is capped and scaled to
+`deliverables.width`. Those are different numbers whenever the viewport is larger, so a run
+reports both - `viewport` is the layout, `output` is the file.
+
+The clip is also bounded to the take it describes, so the duration in the manifest is the duration
+of the mp4. And because the pace is solved from a single measuring pass, a slow site can still blow
+the budget: a finished take that misses its target by more than a tenth says so, rather than
+printing the target and the result on adjacent lines in silence.
+
+A scenario can carry its own `viewport` or `device`, which is how `record --all` gives each clip
+its own size.
+
 ### Waits for a bounded time, and says how long it waited
 
 A rehearsal waits `timeouts.rehearseMs` per action and a take waits `timeouts.actionMs`, eight
@@ -398,6 +412,21 @@ export default {
 
 Relative paths resolve against the config file, never the shell's working directory, so a command
 means the same thing from anywhere in a repo.
+
+The config is read at runtime, so its shapes are checked when it loads: a `scenarios` written as a
+string rather than an array used to be walked character by character, globbing from the filesystem
+root.
+
+## Exit codes
+
+`check` and `doctor` answer a question, and the answer can be that something is wrong. They exit
+non-zero when they report a failure, so a CI step running either of them means something. `record`
+does the same when a scenario in a batch fails - the rest of the batch is still recorded, and the
+report lists what did and did not.
+
+`check --fix-orphans` deletes what no scenario claims. It refuses while the manifest is unreadable,
+because an unreadable manifest claims nothing and every clip would look unclaimed; `--dry-run`
+lists what would go.
 
 ## Reading the manifest
 
@@ -534,10 +563,11 @@ Cross-reference the manifest, the scenarios and the files on disk.
 screencast-axi check
 ```
 
-| Flag              | What it does                                                    |
-| ----------------- | --------------------------------------------------------------- |
-| `--config <path>` | Path to a config file.                                          |
-| `--fix-orphans`   | Delete manifest entries and media with no scenario behind them. |
+| Flag              | What it does                                                       |
+| ----------------- | ------------------------------------------------------------------ |
+| `--config <path>` | Path to a config file.                                             |
+| `--fix-orphans`   | Delete manifest entries and media with no scenario behind them.    |
+| `--dry-run`       | With --fix-orphans, list what would be deleted and delete nothing. |
 
 #### `doctor`
 
