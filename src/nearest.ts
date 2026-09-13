@@ -108,3 +108,20 @@ function safeIsDirectory(file: string): boolean {
     return false;
   }
 }
+
+/**
+ * The closest of `candidates` to `wanted`, when one is close enough to name.
+ *
+ * For ids and topic names, where the alternatives are already known and the
+ * mistake is a typo rather than a wrong path. Returns nothing when nothing is
+ * close: an unhelpful guess reads as the tool misunderstanding the question.
+ */
+export function closest(wanted: string, candidates: readonly string[]): string | undefined {
+  let best: { name: string; score: number } | undefined;
+  for (const name of candidates) {
+    const score = distance(wanted.toLowerCase(), name.toLowerCase());
+    if (!best || score < best.score) best = { name, score };
+  }
+  const threshold = Math.max(2, Math.floor(wanted.length / 3));
+  return best && best.score <= threshold ? best.name : undefined;
+}

@@ -2,6 +2,7 @@ import { ScreencastError } from "../errors.js";
 import { parseFlags, type FlagSpecs } from "../flags.js";
 import type { AxiStructuredOutput } from "../output.js";
 import { NPX_INVOCATION } from "../skill.js";
+import { closest } from "../nearest.js";
 
 /**
  * Topic-sized guidance, pulled one topic at a time.
@@ -314,6 +315,9 @@ export function guideCommand(args: string[]): AxiStructuredOutput {
   const found = TOPICS[topic];
   if (!found) {
     throw new ScreencastError(`Unknown guide topic: ${topic}`, "VALIDATION_ERROR", [
+      ...(closest(topic, Object.keys(TOPICS))
+        ? [`Did you mean \`screencast-axi guide ${closest(topic, Object.keys(TOPICS))}\`?`]
+        : []),
       `Available topics: ${Object.keys(TOPICS).join(", ")}`,
       "Run `screencast-axi guide` to list them with summaries",
     ]);

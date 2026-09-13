@@ -17,6 +17,7 @@ import {
 import { readMeasurement, type MeasurementKey } from "../measure.js";
 import { readManifest } from "../manifest.js";
 import { buildInventory } from "../inventory.js";
+import { closest } from "../nearest.js";
 import { parseDuration, solvePace, type PaceSolution } from "../duration.js";
 import { detectToolchain } from "../toolchain.js";
 import type { DefinedScenario } from "../types.js";
@@ -113,7 +114,9 @@ async function select(
     const match = loaded.find((l) => l.scenario.id === id) ?? (await recordedAs(id, config));
     if (!match) {
       const known = loaded.map((l) => l.scenario.id);
+      const meant = closest(id, known);
       throw new ScreencastError(`Unknown scenario: ${id}`, "UNKNOWN_SCENARIO", [
+        ...(meant ? [`Did you mean \`${meant}\`?`] : []),
         known.length > 0
           ? `This config knows: ${known.join(", ")}`
           : "No scenarios are configured. Create one with `screencast-axi scaffold <id>`",

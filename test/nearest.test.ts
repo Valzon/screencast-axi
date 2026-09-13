@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { distance, loadableIn, nearest } from "../src/nearest.js";
+import { closest, distance, loadableIn, nearest } from "../src/nearest.js";
 
 let dir: string;
 
@@ -82,5 +82,27 @@ describe("what was probably meant", () => {
     const result = nearest(join(dir, "absent", "ada.ts"));
     expect(result.suggestion).toBeUndefined();
     expect(result.siblings).toEqual([]);
+  });
+});
+
+/**
+ * For ids and topic names, where the alternatives are already known. Listing
+ * them is necessary; naming the likely one is what ends the guessing.
+ */
+describe("the closest of a known set", () => {
+  it("names the id behind a typo", () => {
+    expect(closest("dem", ["usecase-anysite", "demo", "usecase-login"])).toBe("demo");
+  });
+
+  it("names the topic behind a typo", () => {
+    expect(closest("scriptng", ["overview", "scripting", "watching"])).toBe("scripting");
+  });
+
+  it("stays quiet when nothing is close", () => {
+    expect(closest("zzzzzzzz", ["overview", "scripting"])).toBeUndefined();
+  });
+
+  it("has nothing to say about an empty set", () => {
+    expect(closest("anything", [])).toBeUndefined();
   });
 });
