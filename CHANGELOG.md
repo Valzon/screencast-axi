@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4](https://github.com/Valzon/screencast-axi/compare/v0.1.3...v0.1.4) (2026-09-13)
+
+
+### Bug Fixes
+
+* stop disowning clips recorded by path, and stop running the scenario twice ([#8](https://github.com/Valzon/screencast-axi/issues/8)) ([1fa4d71](https://github.com/Valzon/screencast-axi/commit/1fa4d71352cc4d79a6534d0cb64166619835540d))
+
 ## [0.1.3](https://github.com/Valzon/screencast-axi/compare/v0.1.2...v0.1.3) (2026-09-11)
 
 
