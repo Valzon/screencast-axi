@@ -237,6 +237,17 @@ function selfImportFailure(file: string, error: unknown): ScreencastError | null
 }
 
 async function importModule(file: string): Promise<Record<string, unknown>> {
+  // Checked before the import, because Node's own message for a missing file
+  // names it as a module "imported from" somewhere inside this package - which
+  // reads like a broken install rather than the typo it almost always is.
+  if (!existsSync(file)) {
+    throw new ScreencastError(`No such file: ${file}`, "SCENARIO_NOT_FOUND", [
+      "Check the path - it is resolved from the working directory",
+      "`screencast-axi list` shows every scenario the config knows about",
+      "`screencast-axi scaffold <id> --url <url>` writes a new one",
+    ]);
+  }
+
   const url = pathToFileURL(file).href;
   try {
     return unwrapModule((await import(url)) as Record<string, unknown>);

@@ -341,3 +341,15 @@ describe("per-action timeouts", () => {
     expect(config.timeouts.rehearseMs).toBe(8_000);
   });
 });
+
+describe("a scenario file that is not there", () => {
+  it("names the file rather than reporting a module missing from inside this package", async () => {
+    // Node's own message calls it a module "imported from" our own dist
+    // directory, which reads like a broken install rather than a typo.
+    const error = await loadScenarioFiles([join(dir, "nope.mjs")]).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ScreencastError);
+    expect((error as ScreencastError).code).toBe("SCENARIO_NOT_FOUND");
+    expect((error as ScreencastError).message).toContain("nope.mjs");
+  });
+});
