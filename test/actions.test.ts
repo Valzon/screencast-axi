@@ -20,7 +20,7 @@ describe("the action log", () => {
       res.end(
         `<body style="height:3000px">
            <h1 id="title">hello</h1>
-           <input id="field" />
+           <input id="field" data-testid="field" />
            <input id="secret" type="password" />
            <button id="go">Go</button>
          </body>`,
@@ -150,8 +150,38 @@ describe("the action log", () => {
     await director.click({ x: 10, y: 20 });
 
     const targets = director.performed.filter((a) => a.kind !== "goto").map((a) => a.target);
-    expect(targets[0]).toContain("#title");
+    // Exactly the selector: a plain locator is the one shape worth unwrapping.
+    expect(targets[0]).toBe("#title");
     expect(targets[1]).toBe("(10, 20)");
+    await page.close();
+  }, 60_000);
+
+  /**
+   * The log is read to decide whether a scenario someone else wrote is safe to
+   * run, so an entry that is not valid syntax is worse than a verbose one. The
+   * unwrapping used to strip a trailing bracket unconditionally, which cut the
+   * closing one off every refined locator and every `getBy*` builder.
+   */
+  it("leaves a refined locator and the getBy builders exactly as Playwright prints them", async () => {
+    const page = await browser.newPage();
+    const director = new Director(page, { baseUrl, pace: 0.1, settleMs: 200 }, Date.now());
+    await director.goto("/");
+
+    await director.waitFor(page.locator("input").first());
+    await director.waitFor(page.getByRole("button", { name: "Go" }));
+    await director.waitFor(page.getByTestId("field"));
+
+    const targets = director.performed.filter((a) => a.kind === "waitFor").map((a) => a.target);
+    expect(targets).toEqual([
+      "locator('input').first()",
+      "getByRole('button', { name: 'Go' })",
+      "getByTestId('field')",
+    ]);
+    for (const t of targets) {
+      const opens = (t?.match(/\(/g) ?? []).length;
+      const closes = (t?.match(/\)/g) ?? []).length;
+      expect(opens).toBe(closes);
+    }
     await page.close();
   }, 60_000);
 });

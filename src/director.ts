@@ -542,13 +542,21 @@ function maskOf(text: string): string {
   return `${"\u2022".repeat(Math.min(8, text.length))} (${text.length} chars)`;
 }
 
-/** A target as a short readable string, for the action log. */
+/**
+ * A target as a short readable string, for the action log.
+ *
+ * The log is what someone reads to decide whether a scenario they did not
+ * write is safe to run, so a garbled entry is worse than a plain one. Only the
+ * exact shape `locator('sel')` is unwrapped to its selector; everything else -
+ * a refined locator (`locator('li').nth(2)`), or one of the other builders
+ * (`getByRole('button', { name: 'Go' })`) - is reported exactly as Playwright
+ * prints it. Stripping a trailing bracket off those turned them into broken
+ * syntax that read like a bug in the scenario.
+ */
 function describeTarget(target: Target | string): string {
   if (typeof target === "string") return target;
   if ("x" in target) return `(${Math.round(target.x)}, ${Math.round(target.y)})`;
-  // Playwright locators stringify to something like `locator('.foo')`.
-  return String(target)
-    .replace(/^locator\(/, "")
-    .replace(/\)$/, "")
-    .replace(/^['"]|['"]$/g, "");
+  const printed = String(target);
+  const bare = /^locator\((['"])([\s\S]*)\1\)$/.exec(printed);
+  return bare?.[2] ?? printed;
 }
