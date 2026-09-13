@@ -107,6 +107,41 @@ describe("the action log", () => {
     await page.close();
   }, 60_000);
 
+  /**
+   * A poster is cut from the clip's first frame, and the clip used to begin on
+   * whatever was on screen when `run()` started - which, for a scenario that
+   * does its own navigating, is the blank page the context opens on. Every
+   * visitor then saw a white rectangle until the video decoded.
+   */
+  it("opens the clip after the first navigation when nothing is painted yet", async () => {
+    const page = await browser.newPage();
+    const director = new Director(page, { baseUrl, pace: 0.1, settleMs: 200 }, Date.now());
+
+    expect(page.url()).toBe("about:blank");
+    director.markClipStart(false);
+    const beforeGoto = director.trimStartSeconds;
+    await director.goto("/");
+
+    // The trim moved forward to cover the navigation, so the clip opens on a
+    // painted page rather than on the blank one it was issued from.
+    expect(director.trimStartSeconds).toBeGreaterThan(beforeGoto);
+    await page.close();
+  }, 60_000);
+
+  it("leaves the clip start alone when something is already on screen", async () => {
+    const page = await browser.newPage();
+    const director = new Director(page, { baseUrl, pace: 0.1, settleMs: 200 }, Date.now());
+    await director.goto("/");
+
+    director.markClipStart(true);
+    const marked = director.trimStartSeconds;
+    await director.goto("/");
+
+    // A later navigation is a cut the clip is meant to show, not dead air.
+    expect(director.trimStartSeconds).toBe(marked);
+    await page.close();
+  }, 60_000);
+
   it("describes a locator and a point readably", async () => {
     const page = await browser.newPage();
     const director = new Director(page, { baseUrl, pace: 0.1, settleMs: 200 }, Date.now());

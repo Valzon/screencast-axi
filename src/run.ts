@@ -290,7 +290,10 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
       await fail("setup", error);
     }
 
-    director.markClipStart();
+    // Whether anything is on screen yet. A scenario that does its own
+    // navigating leaves the context on its blank starting page, and the clip
+    // would otherwise open - and take its poster - from that.
+    director.markClipStart(!isBlank(opened.page.url()));
 
     try {
       await scenario.run(director, ctx);
@@ -441,6 +444,11 @@ function buildSuggestions(id: string, forensics: Forensics, mode: RunMode): stri
     out.push(`Re-check a fix in seconds with \`screencast-axi rehearse ${id}\``);
   }
   return out;
+}
+
+/** Whether a URL is one of the empty pages a context can start on. */
+function isBlank(url: string): boolean {
+  return url === "" || url === "about:blank";
 }
 
 /**

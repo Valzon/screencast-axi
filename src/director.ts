@@ -76,6 +76,14 @@ export class Director {
   private pointer = { x: 0, y: 0 };
   /** ms since the context was created, at the moment the clip proper began. */
   private clipStartedAt: number | null = null;
+  /**
+   * Set when the clip was marked as starting on a page with nothing on it.
+   *
+   * Holds the action count at that moment, so only the scenario's *opening*
+   * navigation may move the start - a `goto` further in is a cut the clip is
+   * meant to show, not dead air at the head of it.
+   */
+  private blankUntil: number | null = null;
   /** Indices passed to {@link step}, in the order the take showed them. */
   private readonly shown: number[] = [];
   /**
@@ -109,9 +117,19 @@ export class Director {
     return Math.max(0, (this.clipStartedAt - this.contextCreatedAt) / 1000);
   }
 
-  /** Marks the end of setup. Everything before this is trimmed off the clip. */
-  markClipStart(): void {
+  /**
+   * Marks the end of setup. Everything before this is trimmed off the clip.
+   *
+   * `painted` says whether there is anything on screen yet. There is not when
+   * a scenario does all its own navigating, which is the common shape and the
+   * one `scaffold` writes - and the clip then opened on the blank page the
+   * context starts at, which is also the frame the poster is cut from. A page
+   * that shows a white rectangle until the video decodes is the one frame
+   * every visitor is guaranteed to see.
+   */
+  markClipStart(painted: boolean): void {
     this.clipStartedAt = Date.now();
+    this.blankUntil = painted ? null : this.actions.length;
   }
 
   private scaled(ms: number): number {
@@ -151,6 +169,7 @@ export class Director {
 
   async goto(path: string): Promise<void> {
     const url = path.startsWith("http") ? path : new URL(path, this.opts.baseUrl).toString();
+    const opening = this.blankUntil !== null && this.actions.length === this.blankUntil;
     this.record("goto", url);
     await this.page.goto(url, { waitUntil: "domcontentloaded" });
     // Bounded on purpose: see `settleMs`. A page that has not gone quiet in a
@@ -158,6 +177,11 @@ export class Director {
     await this.page
       .waitForLoadState("networkidle", { timeout: this.opts.settleMs ?? DEFAULT_SETTLE_MS })
       .catch(() => undefined);
+
+    // The clip opens here rather than on the blank page this navigation was
+    // issued from. Only for the opening navigation, and only once.
+    if (opening) this.clipStartedAt = Date.now();
+    this.blankUntil = null;
   }
 
   /** Which script lines this take put on screen, in order. */
