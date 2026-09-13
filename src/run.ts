@@ -72,6 +72,8 @@ export class ScenarioFailure extends ScreencastError {
   readonly phase: "setup" | "run" | "encode";
   readonly forensics: Forensics;
   readonly lastStep: number | null;
+  /** The action that threw, as the scenario wrote it. */
+  readonly lastAction?: DirectorAction;
 
   constructor(init: {
     scenarioId: string;
@@ -79,6 +81,7 @@ export class ScenarioFailure extends ScreencastError {
     message: string;
     forensics: Forensics;
     lastStep: number | null;
+    lastAction?: DirectorAction;
     suggestions: string[];
   }) {
     super(init.message, "SCENARIO_FAILED", init.suggestions);
@@ -87,6 +90,7 @@ export class ScenarioFailure extends ScreencastError {
     this.phase = init.phase;
     this.forensics = init.forensics;
     this.lastStep = init.lastStep;
+    if (init.lastAction) this.lastAction = init.lastAction;
   }
 }
 
@@ -266,13 +270,15 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
       error,
     });
     const message = error instanceof Error ? error.message : String(error);
+    const lastAction = director.performed.at(-1);
     throw new ScenarioFailure({
       scenarioId: scenario.id,
       phase,
       message: `${scenario.id}: ${message}`,
       forensics,
       lastStep: director.shownSteps.at(-1) ?? null,
-      suggestions: buildSuggestions(scenario.id, forensics, mode),
+      ...(lastAction ? { lastAction } : {}),
+      suggestions: buildSuggestions(scenario.id, forensics, mode, lastAction),
     });
   };
 
@@ -423,8 +429,27 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
   };
 }
 
-function buildSuggestions(id: string, forensics: Forensics, mode: RunMode): string[] {
+function buildSuggestions(
+  id: string,
+  forensics: Forensics,
+  mode: RunMode,
+  lastAction?: DirectorAction,
+): string[] {
   const out: string[] = [];
+
+  // The single most misleading thing a failure can show. The screenshot is
+  // taken once the page has stopped moving, so a scenario that clicked into a
+  // redirect is photographed on the page it landed on - which can look
+  // entirely healthy, and is not what the browser was waiting against.
+  const started = lastAction?.url;
+  if (started && forensics.url && started !== forensics.url) {
+    out.push(
+      `The page moved while this step ran: it was at ${started} when the step started, ` +
+        `and ${forensics.url} by the time it failed - so the screenshot below is of the ` +
+        `second page, not the one the step was waiting against`,
+    );
+  }
+
   if (forensics.screenshot) {
     out.push(`Open ${forensics.screenshot} to see what was on screen when it failed`);
   }

@@ -157,6 +157,22 @@ describe("the action log", () => {
   }, 60_000);
 
   /**
+   * A failure is photographed once the page has stopped moving, so a step that
+   * clicked through a redirect is shown the page it landed on. Recording where
+   * each action started is what lets the two be told apart.
+   */
+  it("records where the page was when each action started", async () => {
+    const page = await browser.newPage();
+    const director = new Director(page, { baseUrl, pace: 0.1, settleMs: 200 }, Date.now());
+    await director.goto("/");
+    await director.waitFor("#title");
+
+    const wait = director.performed.find((a) => a.kind === "waitFor");
+    expect(wait?.url).toBe(`${baseUrl}/`);
+    await page.close();
+  }, 60_000);
+
+  /**
    * The log is read to decide whether a scenario someone else wrote is safe to
    * run, so an entry that is not valid syntax is worse than a verbose one. The
    * unwrapping used to strip a trailing bracket unconditionally, which cut the

@@ -35,6 +35,15 @@ export interface DirectorAction {
   readonly target?: string;
   /** Typed text, a key, a distance - whatever makes the line readable. */
   readonly detail?: string;
+  /**
+   * Where the page was when this action *began*.
+   *
+   * A failure is captured once the page has stopped moving, so a scenario that
+   * clicked through a redirect is photographed on the page it ended up on -
+   * which can look perfectly healthy and is not what the browser was looking
+   * at when the wait was issued. Kept per action so the two can be compared.
+   */
+  readonly url?: string;
 }
 
 /** Default ceiling on the post-navigation settle wait. */
@@ -154,12 +163,23 @@ export class Director {
   }
 
   private record(kind: DirectorAction["kind"], target?: Target | string, detail?: string): void {
+    const url = this.urlNow();
     this.actions.push({
       atMs: Date.now() - this.contextCreatedAt,
       kind,
       ...(target !== undefined ? { target: describeTarget(target) } : {}),
       ...(detail !== undefined ? { detail } : {}),
+      ...(url ? { url } : {}),
     });
+  }
+
+  /** The page's URL, or nothing if the page is in no state to answer. */
+  private urlNow(): string | undefined {
+    try {
+      return this.page.url();
+    } catch {
+      return undefined;
+    }
   }
 
   /** A deliberate pause so the viewer can read what just happened. */
