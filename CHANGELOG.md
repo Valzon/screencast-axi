@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.1.6](https://github.com/Valzon/screencast-axi/compare/v0.1.5...v0.1.6) (2026-09-13)
+
+
+### Features
+
+* a missing scenario path now names the one you meant ([49dfd9d](https://github.com/Valzon/screencast-axi/commit/49dfd9d45d714ada25e18f0e093aaab09b658869))
+* name the likely id or topic behind a typo ([fd78018](https://github.com/Valzon/screencast-axi/commit/fd78018832c174f902438ba7a8fa81065d309ed8))
+
+
+### Bug Fixes
+
+* catch two mistakes that only surfaced after a full take, and correct the guide ([14b6ae7](https://github.com/Valzon/screencast-axi/commit/14b6ae7d6be59fff3aa3323248df2c4a47e11ab9))
+* make a clip the length it claims, and say when it is not ([9b3d20e](https://github.com/Valzon/screencast-axi/commit/9b3d20e89b1c1355f94978bc8bbac850701a534e))
+* refuse nonsense input instead of acting on it, and say what is wrong ([3c34b53](https://github.com/Valzon/screencast-axi/commit/3c34b534225d125a7bc1f7b16c09bd925a629612))
+* stop check deleting a whole clip library, and let both reports fail ([8de8188](https://github.com/Valzon/screencast-axi/commit/8de8188ee1e8ac7c0a302ce0c716388c675427fb))
+* stop the recorder acting on nonsense, destroying clips, and misreporting what it made ([ed7ce03](https://github.com/Valzon/screencast-axi/commit/ed7ce03a50a7e868342323321a52eb993f281f94))
+* stop the recorder reporting sizes and framings it did not use ([989f1aa](https://github.com/Valzon/screencast-axi/commit/989f1aaf5b9af42c9a48f292fd0d507cee00e0dd))
+
 ## [0.1.5](https://github.com/Valzon/screencast-axi/compare/v0.1.4...v0.1.5) (2026-09-13)
 
 
