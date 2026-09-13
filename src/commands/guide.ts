@@ -1,6 +1,7 @@
 import { ScreencastError } from "../errors.js";
 import { parseFlags, type FlagSpecs } from "../flags.js";
 import type { AxiStructuredOutput } from "../output.js";
+import { NPX_INVOCATION } from "../skill.js";
 
 /**
  * Topic-sized guidance, pulled one topic at a time.
@@ -157,7 +158,7 @@ const TOPICS: Record<string, Topic> = {
       '  auth: profileAuth({ signedInSelector: "[data-testid=user-menu]" }),',
       "",
       "Then a person runs, once, in their own terminal:",
-      "  npx -y screencast-axi auth login --interactive",
+      `  ${NPX_INVOCATION} auth login --interactive`,
       "A browser opens, they sign in however that site wants - OAuth, SSO, a",
       "magic link, two-factor - and close the window. The session lives in the",
       "profile and every take reuses it. No credential is handled by this tool.",
