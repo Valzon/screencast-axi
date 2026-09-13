@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { buildInventory, summarise } from "../src/inventory.js";
 import { resolveConfig } from "../src/config.js";
 import { hashSteps, hashText, writeManifest, type ManifestEntry } from "../src/manifest.js";
@@ -51,6 +51,68 @@ beforeEach(() => {
   mkdirSync(join(dir, "out"), { recursive: true });
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+describe("clips recorded by path", () => {
+  /**
+   * The failure this prevents: `record ./scenarios/tour.ts` writes a clip, and
+   * every read-only command then called it an entry nothing produces any more
+   * - `check` reported a failure and offered `--fix-orphans`, which would have
+   * deleted the clip that had just been recorded.
+   */
+  it("is a real row, not an orphan, when the config does not list it", async () => {
+    const file = join(dir, "elsewhere", "beta.mjs");
+    mkdirSync(join(dir, "elsewhere"), { recursive: true });
+    writeFileSync(file, SCENARIO("beta", ["one"]));
+    writeManifest(join(dir, "out"), [
+      entry("beta", {
+        stepsHash: hashSteps(["one"]),
+        sourceHash: hashText(SCENARIO("beta", ["one"])),
+        sourceFile: relative(join(dir, "out"), file),
+      }),
+    ]);
+    media("beta");
+
+    const inv = await buildInventory(config());
+    expect(inv.orphans).toEqual([]);
+    expect(inv.rows).toHaveLength(1);
+    expect(inv.rows[0]).toMatchObject({ id: "beta", status: "recorded", configured: false });
+  });
+
+  it("marks a scenario the config does list as configured", async () => {
+    scenario("alpha");
+    const inv = await buildInventory(config());
+    expect(inv.rows[0]).toMatchObject({ id: "alpha", configured: true });
+  });
+
+  it("is still an orphan once its scenario file is gone", async () => {
+    writeManifest(join(dir, "out"), [entry("beta", { sourceFile: "../elsewhere/beta.mjs" })]);
+    media("beta");
+    const inv = await buildInventory(config());
+    expect(inv.orphans.map((o) => o.id)).toEqual(["beta"]);
+  });
+
+  it("is an orphan when the entry predates source tracking", async () => {
+    // No `sourceFile` at all: nothing to look for, so the honest answer is
+    // that the manifest knows of a clip nothing produces.
+    writeManifest(join(dir, "out"), [entry("beta")]);
+    media("beta");
+    const inv = await buildInventory(config());
+    expect(inv.orphans.map((o) => o.id)).toEqual(["beta"]);
+  });
+
+  it("survives a scenario file that cannot be loaded", async () => {
+    // A read-only survey of the library must not die on one broken file.
+    const file = join(dir, "elsewhere", "broken.mjs");
+    mkdirSync(join(dir, "elsewhere"), { recursive: true });
+    writeFileSync(file, "this is not valid javascript (((");
+    writeManifest(join(dir, "out"), [
+      entry("broken", { sourceFile: relative(join(dir, "out"), file) }),
+    ]);
+    media("broken");
+    const inv = await buildInventory(config());
+    expect(inv.orphans.map((o) => o.id)).toEqual(["broken"]);
+  });
+});
 
 describe("what needs re-shooting", () => {
   it("reports a scenario with no clip", async () => {

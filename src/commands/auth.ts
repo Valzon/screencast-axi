@@ -7,6 +7,7 @@ import { parseFlags, type FlagSpecs } from "../flags.js";
 import { parseDuration } from "../duration.js";
 import type { AxiStructuredOutput } from "../output.js";
 import type { AuthContext } from "../auth/types.js";
+import { NPX_INVOCATION } from "../skill.js";
 
 export const AUTH_FLAGS: FlagSpecs = {
   config: { kind: "string", description: "Path to a config file", placeholder: "path" },
@@ -158,7 +159,7 @@ async function login(
   if (!hasDisplay()) {
     throw new ScreencastError("No display to open a browser window on", "NO_DISPLAY", [
       "Ask the user to run this on their own machine:",
-      `  npx -y screencast-axi auth login --interactive --base-url ${authCtx.baseUrl}`,
+      `  ${NPX_INVOCATION} auth login --interactive --base-url ${authCtx.baseUrl}`,
       "Or produce a session file there and point `storageStateAuth` at it",
     ]);
   }

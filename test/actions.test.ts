@@ -32,10 +32,17 @@ describe("the action log", () => {
     browser = await chromium.launch();
   }, 60_000);
 
+  // Sockets first, browser second. A request still in flight keeps Chromium
+  // busy on the way out, and `server.close` waits for open connections rather
+  // than ending them - so closing in the other order leaves the teardown
+  // waiting on a page waiting on a socket, until the hook times out and the
+  // file is reported as failed with every test in it passing. The timeout
+  // matches the one on setup, so a slow machine is slow rather than red.
   afterAll(async () => {
+    server.closeAllConnections();
     await browser?.close();
     await new Promise<void>((done) => server.close(() => done()));
-  });
+  }, 60_000);
 
   it("records every action, in order, with what it acted on", async () => {
     const page = await browser.newPage();

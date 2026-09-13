@@ -53,6 +53,9 @@ export async function listCommand(args: string[]): Promise<AxiStructuredOutput> 
         ? {
             title: r.title,
             file: relative(process.cwd(), r.file),
+            // A clip recorded by path is real, but `--all` will not re-shoot
+            // it, which is the one thing worth knowing about it.
+            ...(r.configured ? {} : { configured: false }),
             ...(r.staleReason ? { why: r.staleReason } : {}),
             ...(r.missing.length > 0 ? { missing: r.missing } : {}),
             ...(r.entry?.recordedAt ? { recorded: r.entry.recordedAt } : {}),

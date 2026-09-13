@@ -71,9 +71,24 @@ export async function setupCommand(args: string[]): Promise<AxiStructuredOutput>
   };
 }
 
-const TEMPLATE = (outDir: string, url: string) => `import { defineConfig } from "screencast-axi";
+/**
+ * The config `init` writes.
+ *
+ * A type-only import, for the same reason `scaffold` uses one: `import type`
+ * is erased at compile time, so the file loads whether or not the project has
+ * screencast-axi installed. A runtime `defineConfig` import resolves from the
+ * *user's* project, which under `npx` is a cache the file cannot reach - so
+ * `init` used to succeed and leave every command that reads the config
+ * failing with SELF_NOT_INSTALLED.
+ */
+const TEMPLATE = (
+  outDir: string,
+  url: string,
+) => `// A type-only import: erased when this file is compiled, so it loads whether
+// or not the project has screencast-axi installed - under npx included.
+import type { ScreencastConfig } from "screencast-axi";
 
-export default defineConfig({
+export default {
   // Origin only. A baseUrl carrying a path is a trap: \`goto("/")\` resolves
   // against the origin and silently drops the path.
   baseUrl: ${JSON.stringify(url)},
@@ -86,6 +101,8 @@ export default defineConfig({
   // Uncomment to record pages behind a login. A person then runs
   // \`screencast-axi auth login --interactive\` once, signs in in the browser
   // window that opens, and every take afterwards reuses the session.
+  // \`profileAuth\` is a real import, so this needs the package installed here:
+  // \`import { profileAuth } from "screencast-axi"\`.
   //
   // browser: { profileDir: ".screencast/profile" },
   // auth: profileAuth({ signedInSelector: "[data-testid=user-menu]" }),
@@ -94,7 +111,7 @@ export default defineConfig({
     // Page chrome that should never end up in footage.
     hideSelectors: [],
   },
-});
+} satisfies ScreencastConfig;
 `;
 
 const GITIGNORE = `

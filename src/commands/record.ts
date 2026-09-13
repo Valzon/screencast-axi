@@ -1,10 +1,22 @@
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 import { loadConfig, loadScenarioFiles, loadScenarios, type ResolvedConfig } from "../config.js";
 import { ScreencastError } from "../errors.js";
 import { parseFlags, type FlagSpecs } from "../flags.js";
 import type { AxiStructuredOutput } from "../output.js";
-import { ScenarioFailure, runScenario, type RunMode, type RunResult } from "../run.js";
+import {
+  baseUrlFor,
+  runScenario,
+  ScenarioFailure,
+  viewportFor,
+  type RunMode,
+  type RunOptions,
+  type RunResult,
+} from "../run.js";
+import { readMeasurement, type MeasurementKey } from "../measure.js";
+import { readManifest } from "../manifest.js";
+import { buildInventory } from "../inventory.js";
 import { parseDuration, solvePace, type PaceSolution } from "../duration.js";
 import { detectToolchain } from "../toolchain.js";
 import type { DefinedScenario } from "../types.js";
@@ -34,6 +46,10 @@ export const RECORD_FLAGS: FlagSpecs = {
   },
   out: { kind: "string", description: "Output directory", placeholder: "dir" },
   all: { kind: "boolean", description: "Record every scenario the config lists" },
+  "if-changed": {
+    kind: "boolean",
+    description: "Skip clips already recorded from the current scenario",
+  },
   full: { kind: "boolean", description: "Include the full action log" },
   gif: { kind: "boolean", description: "Also emit a looping GIF" },
   webp: { kind: "boolean", description: "Also emit a looping WebP (half a GIF's size)" },
@@ -47,6 +63,25 @@ export const REHEARSE_FLAGS: FlagSpecs = SHARED;
 interface Selected {
   readonly scenario: DefinedScenario;
   readonly file: string;
+}
+
+/**
+ * A scenario the manifest remembers recording, by id.
+ *
+ * A clip recorded by path is not in the config, so re-cutting it by id - the
+ * command `record` itself prints when it finishes - used to fail with
+ * `UNKNOWN_SCENARIO`. The manifest knows which file the clip came from, so
+ * the id is answerable without the config listing it.
+ */
+async function recordedAs(id: string, config: ResolvedConfig): Promise<Selected | null> {
+  const entry = readManifest(config.outDir).entries.find((e) => e.id === id);
+  if (!entry?.sourceFile) return null;
+  const file = isAbsolute(entry.sourceFile)
+    ? entry.sourceFile
+    : resolve(config.outDir, entry.sourceFile);
+  if (!existsSync(file)) return null;
+  const loaded = await loadScenarioFiles([file]).catch(() => []);
+  return loaded.find((l) => l.scenario.id === id) ?? null;
 }
 
 /**
@@ -75,7 +110,7 @@ async function select(
 
   const chosen: Selected[] = [];
   for (const id of ids) {
-    const match = loaded.find((l) => l.scenario.id === id);
+    const match = loaded.find((l) => l.scenario.id === id) ?? (await recordedAs(id, config));
     if (!match) {
       const known = loaded.map((l) => l.scenario.id);
       throw new ScreencastError(`Unknown scenario: ${id}`, "UNKNOWN_SCENARIO", [
@@ -92,6 +127,55 @@ async function select(
     for (const l of loaded.filter((l) => l.file === absolute)) chosen.push(l);
   }
   return chosen;
+}
+
+/**
+ * What a stored measurement has to match to describe this take.
+ *
+ * Null when the scenario's source could not be read: without it an edit
+ * cannot be detected, and a measurement that might describe an older version
+ * of the scenario is not one worth keeping.
+ */
+async function measurementKey(
+  options: RunOptions,
+  sourceText: string | undefined,
+): Promise<MeasurementKey | null> {
+  if (sourceText === undefined) return null;
+  const viewport = await viewportFor(options);
+  return {
+    scenarioId: options.scenario.id,
+    sourceText,
+    steps: options.scenario.steps,
+    baseUrl: baseUrlFor(options),
+    width: viewport.viewport.width,
+    height: viewport.viewport.height,
+    ...(viewport.device ? { device: viewport.device } : {}),
+  };
+}
+
+/**
+ * Narrows a selection to the clips that actually need re-shooting.
+ *
+ * The companion of `check`, which is where someone learns that three of
+ * fifteen clips have drifted. Without it the only way to act on that is
+ * `record --all`, which re-shoots the twelve that were fine - minutes of
+ * browser time and twelve identical files rewritten.
+ *
+ * "Changed" is the inventory's own judgement, so this and `check` cannot
+ * disagree: anything not `recorded` (stale narration, an edited scenario, a
+ * missing deliverable, never recorded at all) is in.
+ */
+async function onlyChanged(
+  selected: readonly Selected[],
+  config: ResolvedConfig,
+  flags: Record<string, unknown>,
+): Promise<Selected[]> {
+  if (flags["if-changed"] !== true) return [...selected];
+  const inventory = await buildInventory(config);
+  const needsWork = new Set(
+    inventory.rows.filter((row) => row.status !== "recorded").map((row) => row.id),
+  );
+  return selected.filter((s) => needsWork.has(s.scenario.id));
 }
 
 function viewportOf(value: unknown): { width: number; height: number } | undefined {
@@ -136,7 +220,11 @@ function truncate(text: string, full: boolean): string {
   return full || text.length <= 70 ? text : `${text.slice(0, 67)}...`;
 }
 
-function describe(result: RunResult, solution?: PaceSolution): AxiStructuredOutput {
+function describe(
+  result: RunResult,
+  solution?: PaceSolution,
+  reusedMeasurement = false,
+): AxiStructuredOutput {
   const files = result.encoded
     ? Object.entries(result.encoded.sizes).map(([name, bytes]) => ({
         file: name,
@@ -152,6 +240,8 @@ function describe(result: RunResult, solution?: PaceSolution): AxiStructuredOutp
       ? {
           target_s: Number((solution.targetMs / 1000).toFixed(1)),
           natural_s: Number((solution.naturalMs / 1000).toFixed(1)),
+          // Which of the two browser passes this take actually cost.
+          measured: reusedMeasurement ? "reused from an earlier pass" : "this run",
           ...(solution.warning ? { warning: solution.warning } : {}),
         }
       : {}),
@@ -177,10 +267,16 @@ export async function recordCommand(args: string[], mode: RunMode): Promise<AxiS
   }
 
   const config = await loadConfig(flags["config"] as string | undefined);
-  const selected = await select(positionals, config, all);
+  const selected = await onlyChanged(await select(positionals, config, all), config, flags);
 
   if (selected.length === 0) {
-    return { [mode]: [], totals: "0 scenarios matched", help: ["Run `screencast-axi list`"] };
+    return flags["if-changed"] === true
+      ? {
+          [mode]: [],
+          totals: "nothing has changed",
+          help: ["Every configured clip is recorded from its current scenario"],
+        }
+      : { [mode]: [], totals: "0 scenarios matched", help: ["Run `screencast-axi list`"] };
   }
 
   // Probed once for the batch rather than per clip, and before any browser
@@ -189,7 +285,22 @@ export async function recordCommand(args: string[], mode: RunMode): Promise<AxiS
 
   const orientation = orientationOf(flags["orientation"]);
   const viewport = viewportOf(flags["viewport"]);
-  const targetMs =
+
+  // Both given is a contradiction, not a precedence question: `--pace` states
+  // the pace and `--duration` asks for one to be solved. Silently dropping
+  // either would produce a clip that is not the length the flag asked for.
+  if (flags["duration"] !== undefined && flags["pace"] !== undefined) {
+    throw new ScreencastError(
+      "`--duration` and `--pace` cannot both be given",
+      "VALIDATION_ERROR",
+      [
+        "`--duration 30s` solves for the pace that lands near that length",
+        "`--pace 0.8` sets it directly, leaving nothing to solve for",
+      ],
+    );
+  }
+
+  const flagTargetMs =
     flags["duration"] !== undefined ? parseDuration(flags["duration"] as string) : null;
 
   // Looping formats are for the places a <video> does not render. They are far
@@ -209,6 +320,8 @@ export async function recordCommand(args: string[], mode: RunMode): Promise<AxiS
 
   const results: RunResult[] = [];
   const solutions = new Map<string, PaceSolution>();
+  /** Scenarios whose natural length came from a previous pass rather than a new one. */
+  const reused = new Set<string>();
   for (const { scenario, file } of selected) {
     const sourceText = await readFile(file, "utf8").catch(() => undefined);
 
@@ -218,6 +331,7 @@ export async function recordCommand(args: string[], mode: RunMode): Promise<AxiS
       scenario,
       config,
       ...(sourceText ? { sourceText } : {}),
+      sourceFile: file,
       ...(flags["base-url"] ? { baseUrl: flags["base-url"] as string } : {}),
       ...(flags["out"] ? { outDir: resolve(process.cwd(), flags["out"] as string) } : {}),
       ...(flags["device"] ? { device: flags["device"] as string } : {}),
@@ -238,13 +352,34 @@ export async function recordCommand(args: string[], mode: RunMode): Promise<AxiS
 
     let pace = flags["pace"] as number | undefined;
 
+    // The flag wins over the scenario's own target, so a re-cut at another
+    // length needs no edit. An explicit --pace wins over both: it says what
+    // the pace is, leaving nothing to solve for.
+    const targetMs =
+      pace !== undefined ? null : (flagTargetMs ?? scenario.targetDurationMs ?? null);
+
     if (targetMs !== null) {
       // Measured, not assumed: a scenario's length is only roughly linear in
       // pace, because the app's own waits do not scale with it. One no-encode
-      // pass is the cheapest honest way to learn the natural length.
-      process.stderr.write(`${scenario.id}: measuring for a ${targetMs / 1000}s target\n`);
-      const probe = await runScenario({ ...base, mode: "rehearse", pace: 1 });
-      const solution = solvePace(probe.durationMs, targetMs, probe.scaledPauseMs);
+      // pass is the cheapest honest way to learn the natural length - and a
+      // rehearsal already ran one, so the answer is often already known.
+      const key = await measurementKey({ ...base, mode: "rehearse", pace: 1 }, sourceText);
+      const cached = key ? readMeasurement(config.rawDir, key) : null;
+
+      let natural: { durationMs: number; scaledPauseMs: number };
+      if (cached) {
+        process.stderr.write(
+          `${scenario.id}: reusing the measured ${(cached.durationMs / 1000).toFixed(1)}s ` +
+            `for a ${targetMs / 1000}s target\n`,
+        );
+        natural = cached;
+        reused.add(scenario.id);
+      } else {
+        process.stderr.write(`${scenario.id}: measuring for a ${targetMs / 1000}s target\n`);
+        natural = await runScenario({ ...base, mode: "rehearse", pace: 1 });
+      }
+
+      const solution = solvePace(natural.durationMs, targetMs, natural.scaledPauseMs);
       solutions.set(scenario.id, solution);
       pace = solution.pace;
       if (solution.warning) process.stderr.write(`${scenario.id}: ${solution.warning}\n`);
@@ -260,7 +395,7 @@ export async function recordCommand(args: string[], mode: RunMode): Promise<AxiS
     // it, so the log is the point of the output rather than an extra.
     const showLog = mode === "rehearse" || full;
     return {
-      ...describe(only, solutions.get(only.id)),
+      ...describe(only, solutions.get(only.id), reused.has(only.id)),
       ...(only.hosts.length > 0 ? { hosts: only.hosts } : {}),
       ...(showLog ? { performed: performed(only, full) } : {}),
       help: nextSteps(only, showLog),

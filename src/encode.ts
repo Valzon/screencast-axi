@@ -15,6 +15,20 @@ export interface EncodeSettings {
   /** Frame rate of the mp4 and webm deliverables. */
   readonly fps: number;
   readonly mp4: { readonly crf: number; readonly preset: string; readonly profile: string };
+  /**
+   * VP9 quality for the webm.
+   *
+   * The webm only earns its place by being the smaller of the two, since it is
+   * offered first and h264 plays everywhere. At CRF 34 it was not: measured
+   * across the demo clips and a 1280x800 Wikipedia take, the webm came out
+   * *larger* than the mp4 on four of five, so every viewer whose browser
+   * preferred it downloaded more bytes for the same picture, and the encode
+   * cost five times the h264 pass to produce them.
+   *
+   * VP9 and h264 do not share a CRF scale - 40 here is not "worse" than 23
+   * there. At 40 the same take is 796 KB against the mp4's 1056 KB, with no
+   * visible difference on text at 1:1.
+   */
   readonly webm: { readonly crf: number };
   readonly poster: { readonly quality: number };
   /**
@@ -39,7 +53,7 @@ export const DEFAULT_ENCODE_SETTINGS: EncodeSettings = {
   width: 1280,
   fps: 30,
   mp4: { crf: 23, preset: "slow", profile: "high" },
-  webm: { crf: 34 },
+  webm: { crf: 40 },
   poster: { quality: 82 },
   gif: false,
   animatedWebp: false,
@@ -99,6 +113,10 @@ export async function encode(opts: EncodeOptions): Promise<EncodeResult> {
   const mp4 = join(opts.outDir, `${opts.id}.mp4`);
   const webm = join(opts.outDir, `${opts.id}.webm`);
 
+  // In sequence, deliberately. Each pass already saturates the machine - VP9
+  // with `-row-mt` most of all - so running the three concurrently only makes
+  // them contend: measured on a 10s 1280x800 clip across ten cores, 7.4s in
+  // sequence against 7.6s in parallel.
   await runOrThrow(ffmpeg, [
     ...QUIET,
     ...trim,
