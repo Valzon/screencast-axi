@@ -69,6 +69,15 @@ export interface ResolvedViewport {
   readonly userAgent?: string;
   /** The preset this came from, for the manifest and the CLI to report. */
   readonly device?: string;
+  /**
+   * Set when an explicit viewport replaced the preset's own.
+   *
+   * The preset still supplies the user agent, scale factor and touch flags, so
+   * this is a legitimate combination - but the page is laid out at the size
+   * given, not the phone's, and a summary that printed the device name beside
+   * a desktop-sized clip read as though the preset had been applied whole.
+   */
+  readonly viewportOverridden?: boolean;
 }
 
 export interface ViewportRequest {
@@ -111,6 +120,11 @@ export async function resolveViewport(
         "Device names are Playwright's own and are case-sensitive",
       ]);
     }
+    const overridden =
+      request.viewport !== undefined &&
+      (request.viewport.width !== preset.viewport.width ||
+        request.viewport.height !== preset.viewport.height);
+
     base = {
       viewport: request.viewport ?? preset.viewport,
       deviceScaleFactor: request.deviceScaleFactor ?? preset.deviceScaleFactor,
@@ -118,8 +132,11 @@ export async function resolveViewport(
       hasTouch: preset.hasTouch,
       userAgent: preset.userAgent,
       device: request.device,
+      ...(overridden ? { viewportOverridden: true } : {}),
     };
   }
+
+  assertUsable(base.viewport);
 
   if (request.orientation) {
     const { width, height } = base.viewport;
@@ -131,6 +148,37 @@ export async function resolveViewport(
   }
 
   return base;
+}
+
+/**
+ * Bounds on a viewport, either end of which produces nonsense.
+ *
+ * Below the minimum there is no page to speak of - a 1x1 viewport records a
+ * 2x2 video - and above the maximum Chromium gives up on allocating the
+ * surface. That failure arrives as an unsettled promise rather than an error,
+ * so the process exited 13 with no message at all, which is the worst way for
+ * a typo in a flag to be answered.
+ */
+const MIN_VIEWPORT_EDGE = 120;
+const MAX_VIEWPORT_EDGE = 8192;
+
+function assertUsable(viewport: Viewport): void {
+  const { width, height } = viewport;
+  const tooSmall = width < MIN_VIEWPORT_EDGE || height < MIN_VIEWPORT_EDGE;
+  const tooLarge = width > MAX_VIEWPORT_EDGE || height > MAX_VIEWPORT_EDGE;
+  if (!tooSmall && !tooLarge) return;
+
+  throw new ScreencastError(
+    `Viewport ${width}x${height} is ${tooSmall ? "too small" : "too large"} to record`,
+    "VIEWPORT_OUT_OF_RANGE",
+    [
+      `Each edge has to be between ${MIN_VIEWPORT_EDGE} and ${MAX_VIEWPORT_EDGE} pixels`,
+      tooSmall
+        ? "The smallest preset Playwright ships is around 320 pixels wide"
+        : "Chromium cannot allocate a surface that large, and fails without an error of its own",
+      'Use a device preset instead: --device "iPhone 13"',
+    ],
+  );
 }
 
 export interface ContextOptions {

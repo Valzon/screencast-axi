@@ -80,7 +80,9 @@ export const DEFAULT_OVERLAY_THEME: OverlayTheme = {
   caption: {
     position: "bottom",
     offset: 40,
-    maxWidth: "min(760px, 78vw)",
+    // The viewport bound leaves a gutter on a phone, where 78% of 320px would
+    // put the caption's shadow against both edges.
+    maxWidth: "min(760px, calc(100vw - 32px))",
     background: "rgba(17, 17, 22, .88)",
     color: "#ffffff",
     fontSize: 17,
@@ -274,6 +276,12 @@ export function installOverlay(theme: ResolvedOverlayTheme): void {
           background: ${cap.background}; color: ${cap.color};
           font: ${cap.fontWeight} ${cap.fontSize}px/1.45 ${cap.fontFamily};
           letter-spacing: .01em; text-align: center;
+          /* A long unbroken token - a URL, a German compound, an id - used to
+             run straight out of the frame on a narrow viewport, taking the
+             rest of its line with it. Breaking anywhere is worse typography
+             than breaking at a space and far better than a caption that is
+             cut off mid-word. */
+          overflow-wrap: anywhere; box-sizing: border-box;
           box-shadow: ${cap.shadow};
           opacity: 0;
           transition: opacity ${cap.fadeMs}ms ease, transform ${cap.fadeMs}ms ease;

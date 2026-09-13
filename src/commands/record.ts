@@ -14,8 +14,9 @@ import {
   type RunOptions,
   type RunResult,
 } from "../run.js";
+import type { ResolvedViewport } from "../browser.js";
 import { readMeasurement, type MeasurementKey } from "../measure.js";
-import { readManifest } from "../manifest.js";
+import { readManifest, type ManifestEntry } from "../manifest.js";
 import { buildInventory } from "../inventory.js";
 import { closest } from "../nearest.js";
 import { parseDuration, solvePace, type PaceSolution } from "../duration.js";
@@ -172,13 +173,43 @@ async function onlyChanged(
   selected: readonly Selected[],
   config: ResolvedConfig,
   flags: Record<string, unknown>,
+  presentation: (scenario: DefinedScenario) => Promise<ResolvedViewport>,
 ): Promise<Selected[]> {
   if (flags["if-changed"] !== true) return [...selected];
+
   const inventory = await buildInventory(config);
   const needsWork = new Set(
     inventory.rows.filter((row) => row.status !== "recorded").map((row) => row.id),
   );
-  return selected.filter((s) => needsWork.has(s.scenario.id));
+  const byId = new Map(inventory.rows.map((row) => [row.id, row.entry]));
+
+  const keep: Selected[] = [];
+  for (const item of selected) {
+    if (needsWork.has(item.scenario.id)) {
+      keep.push(item);
+      continue;
+    }
+    // How it would be shot this time. A clip recorded at another size, or
+    // under another device preset, is a different clip - and comparing only
+    // the scenario's text meant `--device` on the command line was answered
+    // with "nothing has changed" and a stale file at the old size.
+    const entry = byId.get(item.scenario.id);
+    const wanted = await presentation(item.scenario);
+    if (entry && !sameFraming(entry, wanted)) keep.push(item);
+  }
+  return keep;
+}
+
+/** Whether a recorded clip was shot the way this run would shoot it. */
+function sameFraming(entry: ManifestEntry, wanted: ResolvedViewport): boolean {
+  // An entry from before viewports were recorded cannot be compared, and
+  // re-shooting everything once is a worse answer than trusting it.
+  if (!entry.viewport) return (entry.device ?? null) === (wanted.device ?? null);
+  return (
+    entry.viewport.width === wanted.viewport.width &&
+    entry.viewport.height === wanted.viewport.height &&
+    (entry.device ?? null) === (wanted.device ?? null)
+  );
 }
 
 function viewportOf(value: unknown): { width: number; height: number } | undefined {
@@ -238,7 +269,12 @@ function describe(
     [result.mode === "record" ? "recorded" : "rehearsed"]: result.id,
     duration_s: Number((result.durationMs / 1000).toFixed(1)),
     pace: result.pace,
+    // The size the page was laid out at, and - separately - the size of the
+    // file. They are not always the same: the capture is capped and the
+    // deliverable is scaled to `deliverables.width`, so printing only the
+    // first told people their clip was a size it had never been.
     viewport: `${result.viewport.viewport.width}x${result.viewport.viewport.height}`,
+    ...(result.entry ? { output: `${result.entry.width}x${result.entry.height}` } : {}),
     ...(solution
       ? {
           target_s: Number((solution.targetMs / 1000).toFixed(1)),
@@ -249,6 +285,13 @@ function describe(
         }
       : {}),
     ...(result.viewport.device ? { device: result.viewport.device } : {}),
+    ...(result.viewport.viewportOverridden
+      ? {
+          note:
+            `the ${result.viewport.device} preset supplied the user agent and touch flags, ` +
+            `but the page was laid out at the viewport you gave, not the preset's`,
+        }
+      : {}),
     ...(result.identity ? { as: result.identity.label } : {}),
     ...(files.length > 0 ? { files } : {}),
     ...(result.steps.length > 0 ? { steps: result.steps } : {}),
@@ -270,7 +313,25 @@ export async function recordCommand(args: string[], mode: RunMode): Promise<AxiS
   }
 
   const config = await loadConfig(flags["config"] as string | undefined);
-  const selected = await onlyChanged(await select(positionals, config, all), config, flags);
+  // Declared before `selected`, because the framing comparison below reads
+  // them while deciding what to skip.
+  const orientation = orientationOf(flags["orientation"]);
+  const viewport = viewportOf(flags["viewport"]);
+
+  const selected = await onlyChanged(
+    await select(positionals, config, all),
+    config,
+    flags,
+    (scenario) =>
+      viewportFor({
+        scenario,
+        config,
+        mode,
+        ...(flags["device"] ? { device: flags["device"] as string } : {}),
+        ...(orientation ? { orientation } : {}),
+        ...(viewport ? { viewport } : {}),
+      }),
+  );
 
   if (selected.length === 0) {
     return flags["if-changed"] === true
@@ -285,9 +346,6 @@ export async function recordCommand(args: string[], mode: RunMode): Promise<AxiS
   // Probed once for the batch rather than per clip, and before any browser
   // opens - a missing ffmpeg should not cost a forty-second take first.
   const toolchain = mode === "record" ? await detectToolchain() : undefined;
-
-  const orientation = orientationOf(flags["orientation"]);
-  const viewport = viewportOf(flags["viewport"]);
 
   // Both given is a contradiction, not a precedence question: `--pace` states
   // the pace and `--duration` asks for one to be solved. Silently dropping

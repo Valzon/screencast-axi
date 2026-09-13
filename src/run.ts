@@ -373,6 +373,11 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
   const width = Math.min(config.deliverables.width, capture.width);
   const height = Math.round(((width / capture.width) * capture.height) / 2) * 2;
 
+  // Far enough in that the overlay's fades have finished, and never more than
+  // a fifth of the way through a short clip, so the poster still represents
+  // its opening rather than its middle.
+  const posterAt = trimStart + Math.min(0.6, (durationMs / 1000) * 0.2);
+
   const encoded = await encode({
     ...config.deliverables,
     ...options.deliverables,
@@ -381,6 +386,7 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
     outDir,
     id: scenario.id,
     trimStart,
+    posterAt,
     ...(toolchain ? { toolchain } : {}),
   });
 
@@ -399,6 +405,7 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
     ...(scenario.steps ? { steps: scenario.steps } : {}),
     width,
     height,
+    viewport: { width: viewport.viewport.width, height: viewport.viewport.height },
     durationMs,
     recordedAt: new Date().toISOString(),
     pace,

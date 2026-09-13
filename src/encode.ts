@@ -71,6 +71,16 @@ export interface EncodeOptions extends EncodeSettings {
   readonly id: string;
   /** Seconds to cut off the head: setup, navigation, first paint. */
   readonly trimStart: number;
+  /**
+   * Where to cut the poster from, in seconds into the raw capture.
+   *
+   * Not the clip's first frame, which is what it used to be. The overlay fades
+   * its caption and pointer in over a couple of hundred milliseconds, so frame
+   * one catches them part-way and the poster - the single still every visitor
+   * sees before the video decodes - showed a half-transparent caption smeared
+   * over the page. A moment later everything has settled.
+   */
+  readonly posterAt?: number;
   /** Pre-detected toolchain, so a batch does not re-probe per clip. */
   readonly toolchain?: Toolchain;
 }
@@ -161,7 +171,10 @@ export async function encode(opts: EncodeOptions): Promise<EncodeResult> {
     webm,
   ]);
 
-  const poster = await encodePoster(opts, toolchain, ffmpeg, trim, scale);
+  // The poster gets its own seek: see `posterAt`.
+  const posterSeek =
+    opts.posterAt !== undefined && opts.posterAt > 0.05 ? ["-ss", opts.posterAt.toFixed(2)] : trim;
+  const poster = await encodePoster(opts, toolchain, ffmpeg, posterSeek, scale);
 
   // Both looping formats come from the same palette pass, so asking for the
   // pair costs one extra conversion rather than a second encode.
@@ -171,7 +184,12 @@ export async function encode(opts: EncodeOptions): Promise<EncodeResult> {
     const wantsGif = opts.gif;
     gif = join(opts.outDir, `${opts.id}.gif`);
     const palette = join(opts.outDir, `.${opts.id}.palette.png`);
-    const gifScale = `fps=${opts.gifFps},scale=${opts.gifWidth}:-1:flags=lanczos`;
+    // Never wider than the deliverable it is cut from. The default loop width
+    // is sized for a desktop clip, and applying it to a phone capture scaled a
+    // 360px recording up to 800px - a blurrier picture in a file several times
+    // the size, which is the opposite of what these formats are for.
+    const loopWidth = Math.min(opts.gifWidth, opts.width);
+    const gifScale = `fps=${opts.gifFps},scale=${loopWidth}:-1:flags=lanczos`;
     await runOrThrow(ffmpeg, [
       ...QUIET,
       ...trim,

@@ -19,8 +19,19 @@ export interface ManifestEntry {
   readonly description: string;
   /** The narration, which is also the readable text of the workflow. */
   readonly steps?: readonly string[];
+  /** Encoded width of the deliverable, which is not always the viewport. */
   readonly width: number;
   readonly height: number;
+  /**
+   * The viewport the page was laid out at.
+   *
+   * Separate from `width`/`height`, which describe the file: a capture is
+   * capped and the deliverable is scaled, so a 2560-wide take is a 1280-wide
+   * mp4. Recorded because it is part of what the clip *is* - re-shooting the
+   * same scenario at another size produces a different clip, and without this
+   * nothing downstream could tell that had happened.
+   */
+  readonly viewport?: { readonly width: number; readonly height: number };
   readonly durationMs: number;
   /** ISO 8601. Doubles as the upload date in schema.org markup. */
   readonly recordedAt: string;
