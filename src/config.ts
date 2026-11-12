@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 import { DEFAULT_ENCODE_SETTINGS, type EncodeSettings } from "./encode.js";
 import { DEFAULT_SETTLE_MS } from "./director.js";
 import { DEFAULT_OVERLAY_THEME, type DeepPartial, type OverlayTheme } from "./overlay.js";
+import { assertFrameSetting, frameFromEnv, type FrameSetting } from "./frame.js";
 import {
   defineScenario,
   isScenario,
@@ -57,6 +58,15 @@ export interface ScreencastConfig {
   readonly deliverables?: Partial<EncodeSettings>;
   readonly browser?: Partial<BrowserConfig>;
   readonly overlay?: DeepPartial<OverlayTheme>;
+  /**
+   * Shows the app as a card on a padded canvas, with captions in a band above
+   * it and an empty band below for a player's controls.
+   *
+   * `true` for the defaults, an object to adjust them, `false` for a bare
+   * capture. Unset falls back to `SCREENCAST_FRAME`, then off. See
+   * `screencast-axi guide overlay`.
+   */
+  readonly frame?: FrameSetting;
   /** One strategy, or several by name for `--auth <name>`. */
   readonly auth?: AuthConfig;
   readonly timeouts?: {
@@ -93,6 +103,8 @@ export interface ResolvedConfig {
   readonly deliverables: EncodeSettings;
   readonly browser: BrowserConfig;
   readonly overlay: DeepPartial<OverlayTheme>;
+  /** The config's `frame`, or `SCREENCAST_FRAME` when the config says nothing. */
+  readonly frame?: FrameSetting;
   readonly auth: Readonly<Record<string, AuthStrategy>>;
   readonly timeouts: {
     readonly setupMs: number;
@@ -355,6 +367,7 @@ function assertConfigShape(raw: ScreencastConfig, from: string | null): void {
       }
     }
   }
+  assertFrameSetting(r["frame"], where);
 }
 
 function describeValue(value: unknown): string {
@@ -370,6 +383,9 @@ export function resolveConfig(
   cwd = process.cwd(),
 ): ResolvedConfig {
   assertConfigShape(raw, configPath);
+  // The config wins over the machine-wide default, so a project can opt out
+  // of a frame someone turned on for everything.
+  const frame = raw.frame ?? frameFromEnv();
 
   // Relative paths anchor to the config file, never to the shell's cwd -
   // otherwise the same command means different things from different
@@ -405,6 +421,7 @@ export function resolveConfig(
     deliverables: { ...DEFAULT_ENCODE_SETTINGS, ...raw.deliverables },
     browser,
     overlay: { ...DEFAULT_OVERLAY_THEME, ...raw.overlay },
+    ...(frame !== undefined ? { frame } : {}),
     auth: normaliseAuth(raw.auth),
     timeouts: {
       setupMs: raw.timeouts?.setupMs ?? 120_000,

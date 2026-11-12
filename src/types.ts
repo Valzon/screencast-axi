@@ -1,6 +1,7 @@
 import type { Locator, Page } from "playwright";
 import type { Director } from "./director.js";
 import type { DeepPartial, OverlayTheme } from "./overlay.js";
+import type { FrameSetting } from "./frame.js";
 
 /** Anything a Director action can aim at. */
 export type Target = string | Locator | { x: number; y: number };
@@ -61,6 +62,11 @@ export interface Scenario {
    * background - both are properties of the clip, not of the project.
    */
   readonly overlay?: DeepPartial<OverlayTheme>;
+  /**
+   * Frame overrides for this clip, over the config's: `false` records this one
+   * bare, an object restyles it (and turns the frame on).
+   */
+  readonly frame?: FrameSetting;
   /** Free-form labels for filtering in `list`. */
   readonly tags?: readonly string[];
   /** Runs before the clip starts: navigation, data setup, state reset. */

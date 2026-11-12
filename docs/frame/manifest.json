@@ -1,0 +1,65 @@
+[
+  {
+    "id": "usecase-anysite",
+    "title": "Any site, any workflow",
+    "description": "Searching Wikipedia, opening an article and jumping to a section - on a site with no special support of any kind.",
+    "steps": [
+      "Start anywhere",
+      "Type the search the way a person would",
+      "Live suggestions, as they arrive",
+      "Open the article",
+      "Then jump to the section that matters"
+    ],
+    "width": 900,
+    "height": 596,
+    "viewport": {
+      "width": 1160,
+      "height": 620
+    },
+    "durationMs": 9302,
+    "recordedAt": "2026-11-12T14:46:33.737Z",
+    "pace": 1,
+    "frame": true,
+    "formats": [
+      "mp4",
+      "webm",
+      "webp",
+      "anim.webp"
+    ],
+    "sourceHash": "f57ffdbda5a96384",
+    "sourceFile": "../../demo/scenarios/anysite.ts",
+    "stepsHash": "eb3a04137a6819e3",
+    "recorderVersion": "0.1.6"
+  },
+  {
+    "id": "usecase-mobile",
+    "title": "The same workflow, on a phone",
+    "description": "A mobile-shaped take of adding a task, at the device's own pixel density.",
+    "steps": [
+      "The real mobile layout",
+      "Typed on the phone",
+      "And there it is"
+    ],
+    "width": 550,
+    "height": 864,
+    "viewport": {
+      "width": 390,
+      "height": 664
+    },
+    "durationMs": 6279,
+    "recordedAt": "2026-11-12T14:45:27.425Z",
+    "pace": 1,
+    "device": "iPhone 13",
+    "frame": true,
+    "formats": [
+      "mp4",
+      "webm",
+      "webp",
+      "anim.webp"
+    ],
+    "sourceHash": "e830539e13a17a00",
+    "sourceFile": "../../demo/scenarios/mobile.ts",
+    "stepsHash": "2e93a750481e0dee",
+    "recorderVersion": "0.1.6"
+  }
+]

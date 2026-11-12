@@ -1,4 +1,5 @@
 import type { Locator, Page } from "playwright";
+import type { CaptionEvent } from "./frame.js";
 import type { Target } from "./types.js";
 
 export interface DirectorOptions {
@@ -23,6 +24,13 @@ export interface DirectorOptions {
    * silently, because the failure is caught and ignored.
    */
   readonly settleMs?: number;
+  /**
+   * Whether `caption()` draws in the page. Off when the take is framed: the
+   * frame draws captions in its own band above the app, from {@link
+   * Director.captions}, so a second copy over the app would be the very thing
+   * the frame exists to avoid. The log is kept either way.
+   */
+  readonly drawCaptions?: boolean;
   /** Where a warning about the scenario's own setup goes. */
   log?(message: string): void;
 }
@@ -264,13 +272,30 @@ export class Director {
 
   /** Shows a caption at the bottom of the frame. Pass `null` to clear it. */
   async caption(text: string | null, holdMs = 0): Promise<void> {
-    await this.page.evaluate((t) => {
-      const api = (window as unknown as { __screencast?: { caption(v: string | null): void } })
-        .__screencast;
-      api?.caption(t);
-    }, text);
+    if (this.opts.drawCaptions !== false) {
+      await this.page.evaluate((t) => {
+        const api = (window as unknown as { __screencast?: { caption(v: string | null): void } })
+          .__screencast;
+        api?.caption(t);
+      }, text);
+    }
+    // Logged once the page has it, so the time is when it went up rather than
+    // when it was asked for.
+    this.captionLog.push({ atMs: Date.now() - this.contextCreatedAt, text });
     if (holdMs) await this.beat(holdMs);
   }
+
+  /**
+   * Every caption change, on the clock the head-trim is measured from.
+   *
+   * What a framed clip draws its caption band from: the same clock as the
+   * trim means the clip time of a caption is exact, with nothing to align.
+   */
+  get captions(): readonly CaptionEvent[] {
+    return this.captionLog;
+  }
+
+  private readonly captionLog: CaptionEvent[] = [];
 
   locator(target: Target): Locator {
     if (typeof target === "string") return this.page.locator(target).first();

@@ -7,6 +7,7 @@ import { parseFlags, type FlagSpecs } from "../flags.js";
 import type { AxiStructuredOutput } from "../output.js";
 import {
   baseUrlFor,
+  frameFor,
   runScenario,
   ScenarioFailure,
   viewportFor,
@@ -77,6 +78,14 @@ export const RECORD_FLAGS: FlagSpecs = {
     max: 60,
   },
   "keep-raw": { kind: "boolean", description: "Keep the raw capture for inspection" },
+  frame: {
+    kind: "boolean",
+    description: "Put the app on a padded canvas, captions in the band above it",
+  },
+  "no-frame": {
+    kind: "boolean",
+    description: "Record without the frame, whatever the config says",
+  },
 };
 
 export const REHEARSE_FLAGS: FlagSpecs = SHARED;
@@ -198,7 +207,7 @@ async function onlyChanged(
   selected: readonly Selected[],
   config: ResolvedConfig,
   flags: Record<string, unknown>,
-  presentation: (scenario: DefinedScenario) => Promise<ResolvedViewport>,
+  presentation: (scenario: DefinedScenario) => Promise<Presentation>,
 ): Promise<Selected[]> {
   if (flags["if-changed"] !== true) return [...selected];
 
@@ -225,8 +234,17 @@ async function onlyChanged(
   return keep;
 }
 
+/** How this run would shoot a scenario: its viewport, and whether it is framed. */
+interface Presentation {
+  readonly viewport: ResolvedViewport;
+  readonly framed: boolean;
+}
+
 /** Whether a recorded clip was shot the way this run would shoot it. */
-function sameFraming(entry: ManifestEntry, wanted: ResolvedViewport): boolean {
+function sameFraming(entry: ManifestEntry, { viewport: wanted, framed }: Presentation): boolean {
+  // Framed and bare are different pictures of the same take, so turning the
+  // frame on is a reason to re-shoot even though the scenario is unchanged.
+  if ((entry.frame ?? false) !== framed) return false;
   // An entry from before viewports were recorded cannot be compared, and
   // re-shooting everything once is a worse answer than trusting it.
   if (!entry.viewport) return (entry.device ?? null) === (wanted.device ?? null);
@@ -235,6 +253,20 @@ function sameFraming(entry: ManifestEntry, wanted: ResolvedViewport): boolean {
     entry.viewport.height === wanted.viewport.height &&
     (entry.device ?? null) === (wanted.device ?? null)
   );
+}
+
+/** `--frame` / `--no-frame`, or undefined to leave it to the scenario and config. */
+function frameFlag(flags: Record<string, unknown>): boolean | undefined {
+  if (flags["frame"] === true && flags["no-frame"] === true) {
+    throw new ScreencastError(
+      "`--frame` and `--no-frame` cannot both be given",
+      "VALIDATION_ERROR",
+      ["`--frame` frames this run, `--no-frame` records it bare"],
+    );
+  }
+  if (flags["frame"] === true) return true;
+  if (flags["no-frame"] === true) return false;
+  return undefined;
 }
 
 function viewportOf(value: unknown): { width: number; height: number } | undefined {
@@ -376,19 +408,24 @@ export async function recordCommand(args: string[], mode: RunMode): Promise<AxiS
   const outDir = flags["out"] ? resolve(process.cwd(), flags["out"] as string) : config.outDir;
   const against: ResolvedConfig = outDir === config.outDir ? config : { ...config, outDir };
 
+  const frame = frameFlag(flags);
+
   const selected = await onlyChanged(
     await select(positionals, config, all),
     against,
     flags,
-    (scenario) =>
-      viewportFor({
+    async (scenario) => {
+      const options: RunOptions = {
         scenario,
         config,
         mode,
         ...(flags["device"] ? { device: flags["device"] as string } : {}),
         ...(orientation ? { orientation } : {}),
         ...(viewport ? { viewport } : {}),
-      }),
+        ...(frame !== undefined ? { frame } : {}),
+      };
+      return { viewport: await viewportFor(options), framed: frameFor(options) !== null };
+    },
   );
 
   if (selected.length === 0) {
@@ -459,6 +496,7 @@ export async function recordCommand(args: string[], mode: RunMode): Promise<AxiS
       ...(orientation ? { orientation } : {}),
       ...(flags["headed"] === true ? { headed: true } : {}),
       ...(flags["keep-raw"] === true ? { keepRaw: true } : {}),
+      ...(frame !== undefined ? { frame } : {}),
       ...(flags["no-auth"] === true
         ? { auth: false as const }
         : flags["auth"]

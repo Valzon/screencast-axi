@@ -237,7 +237,55 @@ export interface OpenedContext {
   readonly page: Page;
   /** When the context was created - the clock the head-trim is measured from. */
   readonly createdAt: number;
+  /**
+   * When the sync mark went up, in ms after `createdAt`, for a recording.
+   *
+   * See {@link putUpSyncMark}: finding this mark in the capture is what ties
+   * the recorder's clock to the video's.
+   */
+  readonly syncMarkMs?: number;
   close(): Promise<void>;
+}
+
+/** The colour of the sync mark: mid grey, which no blank page is. */
+export const SYNC_MARK_COLOR = "#808080";
+
+/** How long after the page opens the mark goes up - comfortably after the video starts. */
+const SYNC_MARK_DELAY_MS = 450;
+
+/**
+ * Flashes the whole page grey for a moment, and says when.
+ *
+ * Playwright's video does not start when the page is created but when its
+ * first frame arrives, and a frame reaches the file a little after it is
+ * painted - together about 170ms on a fast machine, more on a loaded one. Every
+ * time the recorder logs is on the page's clock, so without knowing that gap
+ * the head-trim cut too late and a framed clip's captions landed that much
+ * behind the picture. Assuming a number would be wrong somewhere; this
+ * measures it on every take, in the head that is trimmed off anyway - about
+ * two thirds of a second, before sign-in or setup begin.
+ */
+async function putUpSyncMark(page: Page, createdAt: number): Promise<number | undefined> {
+  try {
+    // Not straight away: a mark that goes up before the video's first frame is
+    // simply the first frame, and says nothing about when the video started.
+    await page.waitForTimeout(SYNC_MARK_DELAY_MS);
+    await page.evaluate((color) => {
+      const style = document.createElement("style");
+      style.id = "__screencast_sync";
+      style.textContent = `html { background: ${color} !important; } body { visibility: hidden !important; }`;
+      (document.head ?? document.documentElement).appendChild(style);
+    }, SYNC_MARK_COLOR);
+    const at = Date.now() - createdAt;
+    // Long enough for several frames to carry it, short enough not to matter.
+    await page.waitForTimeout(200);
+    await page.evaluate(() => document.getElementById("__screencast_sync")?.remove());
+    return at;
+  } catch {
+    // A page that will not run script cannot be marked; the take still records,
+    // on the old assumption that the clocks agree.
+    return undefined;
+  }
 }
 
 /**
@@ -286,7 +334,14 @@ export async function openContext(options: ContextOptions): Promise<OpenedContex
     });
     const createdAt = Date.now();
     const page = context.pages()[0] ?? (await context.newPage());
-    return { context, page, createdAt, close: () => context.close() };
+    const syncMarkMs = options.recordVideoDir ? await putUpSyncMark(page, createdAt) : undefined;
+    return {
+      context,
+      page,
+      createdAt,
+      ...(syncMarkMs !== undefined ? { syncMarkMs } : {}),
+      close: () => context.close(),
+    };
   }
 
   const browser = await module.chromium.launch({
@@ -297,12 +352,16 @@ export async function openContext(options: ContextOptions): Promise<OpenedContex
     ...shared,
     ...(options.storageState ? { storageState: options.storageState } : {}),
   });
-  const createdAt = Date.now();
+  // After the page, not before it: the page's video cannot start before the
+  // page exists. The sync mark measures whatever gap is left.
   const page = await context.newPage();
+  const createdAt = Date.now();
+  const syncMarkMs = options.recordVideoDir ? await putUpSyncMark(page, createdAt) : undefined;
   return {
     context,
     page,
     createdAt,
+    ...(syncMarkMs !== undefined ? { syncMarkMs } : {}),
     // The capture is only finalised when the context closes, so the context
     // has to go first and the browser after it.
     close: async () => {
