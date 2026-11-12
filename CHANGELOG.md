@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.7](https://github.com/Valzon/screencast-axi/compare/v0.1.6...v0.1.7) (2026-11-12)
+
+
+### Features
+
+* frame a take - the app as a card, captions above it, room for player controls below ([#14](https://github.com/Valzon/screencast-axi/issues/14)) ([4853533](https://github.com/Valzon/screencast-axi/commit/4853533197d540bf53a2109bc179448aafc0b3dc))
+
 ## [0.1.6](https://github.com/Valzon/screencast-axi/compare/v0.1.5...v0.1.6) (2026-09-13)
 
 
