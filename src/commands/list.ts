@@ -138,6 +138,7 @@ export async function showCommand(args: string[]): Promise<AxiStructuredOutput> 
           size: `${row.entry.width}x${row.entry.height}`,
           recorded: row.entry.recordedAt,
           ...(row.entry.device ? { device: row.entry.device } : {}),
+          ...(row.entry.frame ? { frame: true } : {}),
           ...(row.entry.pace !== undefined ? { pace: row.entry.pace } : {}),
         }
       : {}),

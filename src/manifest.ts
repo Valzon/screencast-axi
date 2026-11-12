@@ -39,6 +39,12 @@ export interface ManifestEntry {
   readonly pace?: number;
   /** Device preset, when the take used one. */
   readonly device?: string;
+  /**
+   * The clip shows the app as a card on a padded canvas, with its captions in
+   * the band above it. `width`/`height` are the canvas; `viewport` is still
+   * the app inside it.
+   */
+  readonly frame?: boolean;
   /** Extensions actually written, e.g. ["mp4","webm","webp"]. */
   readonly formats?: readonly string[];
   /**

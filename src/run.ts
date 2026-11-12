@@ -10,6 +10,14 @@ import { captureFailure, type Forensics } from "./forensics.js";
 import { hashSteps, hashText, upsertEntry, type ManifestEntry } from "./manifest.js";
 import { writeMeasurement } from "./measure.js";
 import { mergeThemes, overlayInitScript, resolveOverlayTheme } from "./overlay.js";
+import {
+  assertFrameSetting,
+  composeFrame,
+  discardFrameScratch,
+  frameLayout,
+  resolveFrame,
+  type FrameStyle,
+} from "./frame.js";
 import { detectToolchain, missingFfmpegError, type Toolchain } from "./toolchain.js";
 import type { DefinedScenario, ScenarioContext, Viewport } from "./types.js";
 import { VERSION } from "./version.js";
@@ -33,6 +41,8 @@ export interface RunOptions {
   readonly viewport?: Viewport;
   readonly orientation?: "portrait" | "landscape";
   readonly keepRaw?: boolean;
+  /** `--frame` / `--no-frame`: wins over the scenario and the config. */
+  readonly frame?: boolean;
   /** Per-run overrides on the encode settings, e.g. the looping formats. */
   readonly deliverables?: Partial<EncodeSettings>;
   /** Named strategy, or false to record signed out. */
@@ -170,6 +180,23 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
   const pace = options.pace ?? scenario.pace ?? config.pace;
 
   const viewport = await viewportFor(options);
+  const theme = resolveOverlayTheme(mergeThemes(config.overlay, scenario.overlay));
+
+  // Only a recording is framed: a rehearsal has no video, and its captions are
+  // for whoever is watching a headed run. Resolved either way, so a malformed
+  // scenario `frame` is refused by a rehearsal too rather than first by a take.
+  const framing = frameFor(options);
+  const frame = recording ? framing : null;
+  if (frame) {
+    // The geometry is checked now, so padding that leaves no room for the app
+    // fails before the browser opens rather than after the take.
+    frameLayout({
+      capture: captureSize(viewport),
+      budgetWidth: config.deliverables.width,
+      style: frame,
+      isMobile: viewport.isMobile,
+    });
+  }
 
   // Fail before the browser opens, not forty seconds into a take that cannot
   // possibly produce a file.
@@ -206,7 +233,7 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
   });
 
   await opened.context.addInitScript({
-    content: overlayInitScript(resolveOverlayTheme(mergeThemes(config.overlay, scenario.overlay))),
+    content: overlayInitScript(theme),
   });
 
   // Both are set, and neither is Playwright's 30s default. A rehearsal exists
@@ -226,6 +253,8 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
       settleMs: config.timeouts.settleMs,
       log: (message: string) => log(`  ${message}`),
       ...(scenario.steps ? { steps: scenario.steps } : {}),
+      // A framed take draws its captions in the band above the app instead.
+      ...(frame ? { drawCaptions: false } : {}),
     },
     opened.createdAt,
   );
@@ -378,34 +407,78 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
   // detail. Height follows the source aspect rather than being measured, so a
   // consumer can size the player before the video decodes.
   const capture = captureSize(viewport);
-  const width = Math.min(config.deliverables.width, capture.width);
-  const height = Math.round(((width / capture.width) * capture.height) / 2) * 2;
+  let width = Math.min(config.deliverables.width, capture.width);
+  let height = Math.round(((width / capture.width) * capture.height) / 2) * 2;
 
   // Far enough in that the overlay's fades have finished, and never more than
   // a fifth of the way through a short clip, so the poster still represents
   // its opening rather than its middle.
+  const posterIn = Math.min(0.6, (durationMs / 1000) * 0.2);
+
   // The trim is on the recorder's clock; the video's starts a little later.
   // Measured from the sync mark when it can be, so the clip opens on the frame
-  // it was meant to rather than about 0.17s in.
+  // it was meant to rather than about 0.17s in - and a framed clip's captions,
+  // which are placed relative to that opening, land on the frame the page
+  // showed them on.
+  // Checked before the browser opened, so it is there by now.
+  const ffmpeg = toolchain?.ffmpeg?.path ?? "ffmpeg";
   const offset =
-    opened.syncMarkMs !== undefined && toolchain?.ffmpeg
-      ? await measureClockOffset(toolchain.ffmpeg.path, rawVideoPath, opened.syncMarkMs)
+    opened.syncMarkMs !== undefined
+      ? await measureClockOffset(ffmpeg, rawVideoPath, opened.syncMarkMs)
       : null;
+  if (offset === null && frame) {
+    log(`  ${scenario.id}: no sync mark in the capture, so captions may sit a few frames late`);
+  }
   const videoTrim = Math.max(0, trimStart + (offset ?? 0));
-  const posterAt = videoTrim + Math.min(0.6, (durationMs / 1000) * 0.2);
 
-  const encoded = await encode({
-    ...config.deliverables,
-    ...options.deliverables,
-    width,
-    input: rawVideoPath,
-    outDir,
-    id: scenario.id,
-    trimStart: videoTrim,
-    posterAt,
-    durationSeconds: durationMs / 1000,
-    ...(toolchain ? { toolchain } : {}),
-  });
+  // A framed take is composed first - trimmed, cut to length and put on its
+  // canvas - and every deliverable is cut from that, so the mp4, the webm, the
+  // poster and the looping formats are all the same framed picture.
+  let input = rawVideoPath;
+  let inputTrim = videoTrim;
+  let scratch: readonly string[] = [];
+  if (frame) {
+    const composed = await composeFrame({
+      input: rawVideoPath,
+      workDir: config.rawDir,
+      id: scenario.id,
+      ffmpeg,
+      style: frame,
+      capture,
+      budgetWidth: config.deliverables.width,
+      isMobile: viewport.isMobile,
+      fps: options.deliverables?.fps ?? config.deliverables.fps,
+      trimStart: videoTrim,
+      clipStartOnClock: trimStart,
+      durationSeconds: durationMs / 1000,
+      captions: director.captions,
+      fontFamily: theme.caption.fontFamily,
+      fadeMs: frame.caption.fadeMs ?? theme.caption.fadeMs,
+    });
+    input = composed.path;
+    inputTrim = 0;
+    scratch = composed.scratch;
+    width = composed.layout.canvas.width;
+    height = composed.layout.canvas.height;
+  }
+
+  let encoded: EncodeResult;
+  try {
+    encoded = await encode({
+      ...config.deliverables,
+      ...options.deliverables,
+      width,
+      input,
+      outDir,
+      id: scenario.id,
+      trimStart: inputTrim,
+      posterAt: inputTrim + posterIn,
+      durationSeconds: durationMs / 1000,
+      ...(toolchain ? { toolchain } : {}),
+    });
+  } finally {
+    if (!options.keepRaw) await discardFrameScratch(scratch);
+  }
 
   if (!options.keepRaw) await rm(rawVideoPath, { force: true });
 
@@ -427,6 +500,7 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
     recordedAt: new Date().toISOString(),
     pace,
     ...(viewport.device ? { device: viewport.device } : {}),
+    ...(frame ? { frame: true } : {}),
     formats,
     ...(options.sourceText ? { sourceHash: hashText(options.sourceText) } : {}),
     ...(options.sourceFile ? { sourceFile: relative(outDir, options.sourceFile) } : {}),
@@ -452,6 +526,18 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
     manifestPath,
     entry,
   };
+}
+
+/**
+ * The frame a take is recorded in, or null for a bare capture.
+ *
+ * Exported for the same reason as {@link viewportFor}: `--if-changed` compares
+ * a recorded clip against how this run would shoot it, and has to ask the
+ * same question the run does.
+ */
+export function frameFor(options: RunOptions): FrameStyle | null {
+  assertFrameSetting(options.scenario.frame, `scenario \`${options.scenario.id}\``);
+  return resolveFrame(options.config.frame, options.scenario.frame, options.frame);
 }
 
 function buildSuggestions(

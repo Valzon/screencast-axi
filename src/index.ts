@@ -25,6 +25,7 @@ export {
   type OverlayTheme,
   type ResolvedOverlayTheme,
 } from "./overlay.js";
+export { DEFAULT_FRAME_STYLE, FRAME_ENV, type FrameSetting, type FrameStyle } from "./frame.js";
 export {
   DEFAULT_ENCODE_SETTINGS,
   encode,
