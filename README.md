@@ -200,6 +200,37 @@ screencast-axi record onboarding --device "iPhone 13" --orientation portrait
 page into the video canvas without scaling up. `deviceScaleFactor` still changes how the page
 renders and which images it picks, but not the resolution of the recording.</sup>
 
+### Frames the app, so captions and player controls stay off it
+
+> _"The caption is covering the button I'm talking about, and the play bar sits on the app's
+> footer."_
+
+A caption drawn inside the page covers the app it is describing, and a video player draws its
+controls over the bottom of the picture - which, on a bare capture, is the app's own footer, tab
+bar or send button. `frame: true` in the config puts the app on a padded canvas instead: a rounded
+card with a soft shadow, the captions in a band **above** it, and an empty band **below** it for the
+player's controls to sit on.
+
+```sh
+screencast-axi record tour --frame        # this run
+export SCREENCAST_FRAME=1                 # every recording on this machine
+```
+
+<p>
+  <img src="docs/frame/usecase-anysite.anim.webp" alt="A Wikipedia walkthrough framed: the caption sits in a grey band above a rounded card holding the page, with an empty band below it." width="460">
+  <img src="docs/frame/usecase-mobile.anim.webp" alt="A phone recording framed the same way, the phone screen as a rounded card." width="200">
+</p>
+
+<sup>Framed takes of the two clips above - [desktop](docs/frame/usecase-anysite.mp4) and
+[phone](docs/frame/usecase-mobile.mp4). The captions are not drawn by the page: the recorder logs
+when each one went up and composes the band from that log, so they land on the frame the page
+showed them on.</sup>
+
+The canvas stays inside `deliverables.width`: a 1440x900 take in the default 1280 becomes a
+1280x900 clip with the app at 1120x700. A phone is never scaled up - an iPhone 13 take is 550x864
+with the app at its own 390x664 - and its corners are rounded like a phone's. Everything is
+adjustable; see [Configuration](#configuration).
+
 ### Shows you what it is doing
 
 A scenario is arbitrary code driving a real browser, often one signed into your own account, so
@@ -352,7 +383,10 @@ object written in the config - typed and debuggable rather than a shelled-out sc
 
 ## Output formats
 
-Every take produces an mp4, a webm and a poster, all three encoded at once. Looping images are
+Every take produces an mp4, a webm and a poster, all three encoded at once. A framed take
+(`frame: true`) is composed onto its canvas first, and every format - the poster and the looping
+images included - is cut from that, so they all show the same framed picture; `width` and `height`
+in the manifest are then the canvas, and `frame: true` marks the entry. Looping images are
 opt-in with `--gif` and `--webp`, for the places a `<video>` does not render - a README, an npm
 page, an email.
 
@@ -402,6 +436,17 @@ export default {
     hideSelectors: ["#cookie-banner", "nextjs-portal"],
   },
 
+  // The app as a card on a padded canvas: captions in the band above it, an
+  // empty band below it for a player's controls. `true` takes the defaults.
+  frame: {
+    background: "#e9ecef",
+    padding: { x: 80, top: 100, bottom: 100 }, // output pixels; top grows to fit a caption
+    radius: "auto", // 22 on a phone preset, 14 otherwise
+    border: "#ced4da", // or false
+    shadow: "0 6px 20px rgba(33, 37, 41, 0.28)", // or false
+    caption: { color: "#212529", fontSize: "auto", fontWeight: 650 },
+  },
+
   timeouts: {
     actionMs: 15_000, // per action during a take
     rehearseMs: 8_000, // per action during a rehearsal, which exists to fail fast
@@ -412,6 +457,11 @@ export default {
 
 Relative paths resolve against the config file, never the shell's working directory, so a command
 means the same thing from anywhere in a repo.
+
+`frame` is off unless something turns it on, most specific first: `--frame` / `--no-frame` on the
+command line, then the scenario's own `frame` (`false` opts one clip out; an object restyles it),
+then the config's, then `SCREENCAST_FRAME=1` in the environment - which is how to frame every
+recording on a machine without touching each project's config.
 
 The config is read at runtime, so its shapes are checked when it loads: a `scenarios` written as a
 string rather than an array used to be walked character by character, globbing from the filesystem
@@ -526,6 +576,8 @@ screencast-axi record <id|path...>
 | `--loop-width <value>` | Width of the looping formats.                                         |
 | `--loop-fps <value>`   | Frame rate of the looping formats.                                    |
 | `--keep-raw`           | Keep the raw capture for inspection.                                  |
+| `--frame`              | Put the app on a padded canvas, captions in the band above it.        |
+| `--no-frame`           | Record without the frame, whatever the config says.                   |
 
 #### `list`
 
