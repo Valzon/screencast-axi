@@ -13,6 +13,7 @@ import { mergeThemes, overlayInitScript, resolveOverlayTheme } from "./overlay.j
 import { detectToolchain, missingFfmpegError, type Toolchain } from "./toolchain.js";
 import type { DefinedScenario, ScenarioContext, Viewport } from "./types.js";
 import { VERSION } from "./version.js";
+import { measureClockOffset } from "./sync.js";
 
 export type RunMode = "record" | "rehearse";
 
@@ -383,7 +384,15 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
   // Far enough in that the overlay's fades have finished, and never more than
   // a fifth of the way through a short clip, so the poster still represents
   // its opening rather than its middle.
-  const posterAt = trimStart + Math.min(0.6, (durationMs / 1000) * 0.2);
+  // The trim is on the recorder's clock; the video's starts a little later.
+  // Measured from the sync mark when it can be, so the clip opens on the frame
+  // it was meant to rather than about 0.17s in.
+  const offset =
+    opened.syncMarkMs !== undefined && toolchain?.ffmpeg
+      ? await measureClockOffset(toolchain.ffmpeg.path, rawVideoPath, opened.syncMarkMs)
+      : null;
+  const videoTrim = Math.max(0, trimStart + (offset ?? 0));
+  const posterAt = videoTrim + Math.min(0.6, (durationMs / 1000) * 0.2);
 
   const encoded = await encode({
     ...config.deliverables,
@@ -392,7 +401,7 @@ export async function runScenario(options: RunOptions): Promise<RunResult> {
     input: rawVideoPath,
     outDir,
     id: scenario.id,
-    trimStart,
+    trimStart: videoTrim,
     posterAt,
     durationSeconds: durationMs / 1000,
     ...(toolchain ? { toolchain } : {}),
